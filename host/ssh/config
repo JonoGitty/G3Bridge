@@ -1,27 +1,38 @@
 # G3Bridge SSH config for the vintage Macs.
 #
-# Used with:  ssh -F host/ssh/config emac
-# so nothing here touches your personal ~/.ssh/config.
+#   ssh -F host/ssh/config emac
 #
-# The algorithm lines are NOT optional. A modern OpenSSH client has removed
-# every key exchange, host key type and cipher that a 2003-era sshd offers --
-# they are still compiled in, just disabled by default. Without these the
-# connection dies at "no matching key exchange method found".
+# Used with -F so nothing here touches your personal ~/.ssh/config.
+#
+# WHY THE ALGORITHM LINES EXIST
+# A current OpenSSH client has REMOVED ssh-rsa host keys from its defaults.
+# The eMac's sshd offers only "ssh-rsa,ssh-dss", so a plain ssh dies at:
+#     no matching host key type found. Their offer: ssh-rsa,ssh-dss
+# Measured against this actual machine: HostKeyAlgorithms alone is enough to
+# negotiate, and PubkeyAcceptedAlgorithms is additionally required for key
+# authentication. The server is OpenSSH_5.1 and picks
+# diffie-hellman-group-exchange-sha256, so no legacy kex or cipher is needed.
 #
 # Use the WINDOWS ssh.exe (C:\Windows\System32\OpenSSH\ssh.exe). WSL's newer
-# OpenSSH has REMOVED ssh-dss entirely rather than merely disabling it.
+# OpenSSH has REMOVED ssh-dss outright rather than merely disabling it, which
+# would matter against an older Mac.
 
 Host emac
     HostName 192.168.11.3
-    IdentityFile ~/.ssh/id_g3bridge
+    IdentityFile C:\AI\G3Bridge\host\ssh\id_g3bridge
     IdentitiesOnly yes
-    KexAlgorithms +diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1
-    HostKeyAlgorithms +ssh-rsa,ssh-dss
+
+    # Required, verified against this machine:
+    HostKeyAlgorithms +ssh-rsa
     PubkeyAcceptedAlgorithms +ssh-rsa
-    Ciphers +aes128-cbc,3des-cbc
-    MACs +hmac-sha1,hmac-md5
-    # The Mac is on an isolated cable and may be reinstalled; a changed host
-    # key is expected here and should not block the connection.
+
+    # Not needed by OpenSSH_5.1 (10.5), but harmless and required by the
+    # OpenSSH 3.x found on 10.3/10.4. Uncomment if pointing at an older Mac.
+    # KexAlgorithms +diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1
+    # Ciphers +aes128-cbc,3des-cbc
+    # MACs +hmac-sha1,hmac-md5
+
+    # Isolated cable; a reinstall changing the host key should not block us.
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
     LogLevel ERROR
