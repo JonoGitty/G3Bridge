@@ -34,6 +34,7 @@ for stream in (sys.stdout, sys.stderr):
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+CLAUDE_DIR = os.path.join(HERE, "..", "www", "claude")
 TO_MAC = os.path.join(HERE, "..", config.TO_MAC_DIR)
 FROM_MAC = os.path.join(HERE, "..", config.FROM_MAC_DIR)
 
@@ -136,6 +137,53 @@ TOOLS = [
             "List the vintage machines the bridge knows about, their addresses, "
             "screen sizes, and whether each is connected. Call this first if you "
             "are unsure which machine to target."),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "g3_publish",
+        "description": (
+            "Put a page on the vintage Mac's screen. This is the main way to SHOW "
+            "something to that machine: a chart, a summary, a reference sheet, a "
+            "dashboard, a plan, anything you can write as HTML.\n\n"
+            "It appears immediately at http://<pc>:9980/claude-screen on the Mac. "
+            "The newest thing published is what that URL shows, so the user can "
+            "leave it open and reload.\n\n"
+            "WRITE FOR A 2008 BROWSER. Safari 3 on a 1.25GHz PowerPC G4, 1024x768. "
+            "CSS2 only: no flexbox, no grid, no border-radius, no box-shadow, no "
+            "transitions. JavaScript must be ES3/ES5 -- no let/const, no arrow "
+            "functions, no template literals, no class. NOTHING may be loaded from "
+            "the internet: no CDN, no web fonts, no remote images. The machine has "
+            "no route off the cable. Fonts available: 'Lucida Grande', Geneva, "
+            "Monaco, 'Courier New'."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string",
+                         "description": "Short file name, e.g. 'weather' or 'budget-summary'. .html is added."},
+                "html": {"type": "string",
+                         "description": "The complete HTML page, including <html>, <head><title>, and <body>."},
+            },
+            "required": ["name", "html"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "g3_suspend",
+        "description": (
+            "KILL SWITCH. Stops the bridge doing anything: no pages served to the "
+            "Mac, no drawing, no file transfer, no news fetching, and no machine "
+            "may connect. The state persists across a restart of the daemon.\n\n"
+            "Use when the user asks to stop, pause, or shut the project down. "
+            "Reverse it with g3_resume."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"reason": {"type": "string", "description": "Why, shown to anyone who hits the bridge."}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "g3_resume",
+        "description": "Switch the bridge back on after g3_suspend.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
@@ -303,6 +351,42 @@ def call_tool(name, args):
         lines.append("Omit the device argument when only one machine is connected.")
         return "\n".join(lines), False
 
+    if name == "g3_publish":
+        raw = args.get("name") or ""
+        fname = xfer.safe_name(raw)
+        if not fname:
+            return "Give it a name.", True
+        if not fname.endswith(".html"):
+            fname += ".html"
+        body = args.get("html") or ""
+        if "<" not in body:
+            return "That does not look like HTML.", True
+        if not os.path.isdir(CLAUDE_DIR):
+            os.makedirs(CLAUDE_DIR)
+        with open(os.path.join(CLAUDE_DIR, fname), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(body)
+        return ("Published %s (%s).\n"
+                "On the Mac it is now at  http://%s:%d/claude-screen\n"
+                "and permanently at       http://%s:%d/claude-screen/%s"
+                % (fname, xfer.human(len(body.encode("utf-8"))),
+                   config.SUGGESTED_PC_IP, config.HTTP_PORT,
+                   config.SUGGESTED_PC_IP, config.HTTP_PORT, fname)), False
+
+    if name == "g3_suspend":
+        results = daemon_exec(["SUSPEND %s" % (args.get("reason") or "asked to stop")])
+        _, verb, vals = results[0]
+        if verb != "OK":
+            return " ".join(vals), True
+        return ("Bridge SUSPENDED. Nothing is served, nothing may connect.\n"
+                "%s\nResume with g3_resume." % " ".join(vals)), False
+
+    if name == "g3_resume":
+        results = daemon_exec(["RESUME"])
+        _, verb, vals = results[0]
+        if verb != "OK":
+            return " ".join(vals), True
+        return "Bridge resumed. %s" % " ".join(vals), False
+
     if name == "g3_status":
         results = daemon_exec(["STATUS"], dev)
         _, verb, vals = results[0]
@@ -469,9 +553,23 @@ def handle(msg):
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "g3bridge", "version": SERVER_VERSION},
             "instructions": (
-                "Drives a 1999 Apple iMac G3 running Mac OS 9 as a graphics display "
-                "over a direct Ethernet cable. Use g3_status to confirm the machine "
-                "is connected before drawing."),
+                "G3Bridge drives Jono's vintage Macs from this PC over a direct "
+                "Ethernet cable. Two machines: 'emac' (Mac OS X 10.5.6, 1024x768, "
+                "the good one) and 'g3' (iMac G3, Mac OS 9.2, 800x600, has a "
+                "thermal fault and is often not running).\n\n"
+                "THE MACHINES HAVE NO INTERNET. No gateway, no DNS, deliberately. "
+                "Anything they need, this PC fetches and serves down the cable. "
+                "Never write a page for them that loads anything remote.\n\n"
+                "TO SHOW SOMETHING ON THE VINTAGE MAC'S SCREEN, use g3_publish. It "
+                "puts an HTML page at /claude-screen, which is the surface set "
+                "aside for exactly this. Write for Safari 3 (2008): CSS2 only, "
+                "ES3/ES5 JavaScript, no external resources.\n\n"
+                "g3_draw is different -- it draws primitives on a framebuffer, for "
+                "the OS 9 machine or for simple graphics. For anything textual or "
+                "layout-heavy, publish a page instead.\n\n"
+                "Call g3_devices if unsure which machine to target; omit the "
+                "device argument when only one is connected. g3_suspend is a kill "
+                "switch that stops the whole bridge."),
         })
         return
 

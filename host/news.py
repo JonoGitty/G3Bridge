@@ -113,8 +113,12 @@ def refresh(force=False):
                 _cache[key] = prev
 
 
-def start_background():
-    """Keep the cache warm so a page load never waits on the network."""
+def start_background(paused=None):
+    """Keep the cache warm so a page load never waits on the network.
+
+    `paused` is an optional callable; while it returns True nothing is fetched,
+    so the kill switch really does stop all outbound traffic.
+    """
     global _thread
     if _thread is not None:
         return
@@ -122,7 +126,8 @@ def start_background():
     def loop():
         while True:
             try:
-                refresh()
+                if paused is None or not paused():
+                    refresh()
             except Exception:
                 pass
             time.sleep(120)

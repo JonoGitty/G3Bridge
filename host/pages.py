@@ -9,6 +9,7 @@ Kept separate from g3d.py so the daemon stays about plumbing.
 
 import html
 import os
+import re
 import time
 
 CSS = """
@@ -46,7 +47,8 @@ CSS = """
 
 def _shell(title, current, body, note=""):
     tabs = [("/", "Home"), ("/news", "News"), ("/games", "Games"),
-            ("/display", "Display"), ("/files", "Files"), ("/setup", "Setup")]
+            ("/claude-screen", "Claude"), ("/display", "Display"),
+            ("/files", "Files"), ("/setup", "Setup")]
     nav = ""
     for href, label in tabs:
         cls = ' class="on"' if href == current else ""
@@ -178,4 +180,71 @@ def scan_games(directory):
             except OSError:
                 pass
         out.append(meta)
+    return out
+
+
+# ---------------------------------------------------------------- claude screen
+def artefact_placeholder():
+    body = ('<h1>Claude&rsquo;s screen</h1>'
+            '<p class="sub">Nothing published yet.</p>'
+            '<div class="card"><p>This page is a surface Claude publishes to. '
+            'Ask for something &mdash; a chart, a summary, a reference sheet, a '
+            'plan &mdash; and it appears here for this machine to display.</p>'
+            '<p style="margin-top:10px">Leave it open and reload when you want '
+            'the latest, or open <a href="/claude-screen/index">the list</a> to '
+            'see everything published so far.</p></div>')
+    return _shell("Claude's screen", "/claude-screen", body)
+
+
+def artefact_index(items):
+    """items: [(name, title, size, mtime)] newest first."""
+    body = ('<h1>Claude&rsquo;s screen</h1>'
+            '<p class="sub">Everything published to this machine, newest first. '
+            '<a href="/claude-screen">Current</a></p>')
+    if not items:
+        body += '<p class="warn">Nothing published yet.</p>'
+    for name, title, size, mtime in items:
+        body += ('<div class="card"><h3><a href="/claude-screen/%s">%s</a></h3>'
+                 '<p>%s &middot; %s &middot; <tt>%s</tt></p></div>'
+                 % (html.escape(name), html.escape(title),
+                    time.strftime("%a %d %b %H:%M", time.localtime(mtime)),
+                    _size(size), html.escape(name)))
+    return _shell("Claude's screen", "/claude-screen", body)
+
+
+def _size(n):
+    if n < 1024:
+        return "%d B" % n
+    if n < 1024 * 1024:
+        return "%.0f KB" % (n / 1024.0)
+    return "%.1f MB" % (n / (1024.0 * 1024))
+
+
+def scan_artefacts(directory):
+    """[(name, title, size, mtime)] newest first."""
+    out = []
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return out
+    for n in names:
+        if not n.endswith(".html"):
+            continue
+        fn = os.path.join(directory, n)
+        try:
+            st = os.stat(fn)
+        except OSError:
+            continue
+        title = n[:-5].replace("_", " ").replace("-", " ").strip()
+        try:
+            fh = open(fn, encoding="utf-8", errors="replace")
+            head = fh.read(4096)
+            fh.close()
+            m = re.search(r"<title>(.*?)</title>", head, re.S | re.I)
+            if m:
+                title = re.sub(r"\s+", " ", m.group(1)).strip()
+        except OSError:
+            pass
+        out.append((n, title or n, st.st_size, st.st_mtime))
+    out.sort(key=lambda r: r[3], reverse=True)
     return out

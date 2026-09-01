@@ -60,6 +60,7 @@ def main():
         "g3_status", "g3_draw", "g3_clear", "g3_screenshot", "g3_events",
         "g3_send_file", "g3_transfers", "g3_read_received",
         "g3_applescript", "g3_applet_status", "g3_devices",
+        "g3_publish", "g3_suspend", "g3_resume",
     ])
     check("exposes exactly the expected tools", names == EXPECTED,
           "missing=%s unexpected=%s" % (sorted(set(EXPECTED) - set(names)),

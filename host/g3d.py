@@ -47,6 +47,7 @@ RUN_DIR = os.path.join(HERE, "..", "run")
 BOOT_DIR = os.path.join(HERE, "..", "g3")
 WWW_DIR = os.path.join(HERE, "..", "www")
 GAMES_DIR = os.path.join(WWW_DIR, "games")
+CLAUDE_DIR = os.path.join(WWW_DIR, "claude")
 TO_MAC = os.path.join(HERE, "..", config.TO_MAC_DIR)
 FROM_MAC = os.path.join(HERE, "..", config.FROM_MAC_DIR)
 
@@ -337,7 +338,82 @@ class CommandQueue:
             return ["applet=%s" % state, "polls=%d" % self.polls, "last_poll=%s" % age]
 
 
+class Switch:
+    """A kill switch for the whole bridge.
+
+    Suspended, the bridge stops doing anything outward: no pages served, no
+    agent connections accepted, no news fetched, no proxying. The control port
+    stays alive on loopback so it can be switched back on -- a kill switch you
+    cannot undo is a trap, not a safety feature.
+
+    The state is written to disk so it survives a restart. If the bridge was
+    suspended when the machine went down, it comes back suspended.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.reason = ""
+        self.since = None
+        self._path = os.path.join(RUN_DIR, "suspended")
+        self._suspended = False
+        try:
+            if os.path.exists(self._path):
+                with open(self._path) as fh:
+                    self.reason = fh.read().strip() or "(no reason recorded)"
+                self._suspended = True
+                self.since = os.path.getmtime(self._path)
+        except OSError:
+            pass
+
+    @property
+    def suspended(self):
+        return self._suspended
+
+    def suspend(self, reason=""):
+        with self._lock:
+            self._suspended = True
+            self.reason = reason or "(no reason given)"
+            self.since = time.time()
+            try:
+                if not os.path.isdir(RUN_DIR):
+                    os.makedirs(RUN_DIR)
+                with open(self._path, "w") as fh:
+                    fh.write(self.reason)
+            except OSError:
+                pass
+        log("SUSPENDED: %s" % self.reason)
+        # drop any attached machine so nothing is left half-connected
+        for d in REGISTRY:
+            if d.link and d.link.alive:
+                try:
+                    d.link._sock.close()
+                except (OSError, AttributeError):
+                    pass
+
+    def resume(self):
+        with self._lock:
+            self._suspended = False
+            self.reason = ""
+            self.since = None
+            try:
+                if os.path.exists(self._path):
+                    os.remove(self._path)
+            except OSError:
+                pass
+        log("RESUMED")
+
+    def status(self):
+        if not self._suspended:
+            return ["state=running"]
+        out = ["state=SUSPENDED", "reason=%s" % self.reason]
+        if self.since:
+            out.append("since=%ds_ago" % int(time.time() - self.since))
+        return out
+
+
 REGISTRY = devices.Registry()
+SWITCH = None       # created in main(), after RUN_DIR exists
+
 for _d in REGISTRY:
     _d.link = Link()
     _d.queue = CommandQueue()
@@ -353,6 +429,13 @@ class AgentHandler(socketserver.BaseRequestHandler):
 
     def handle(self):
         sock = self.request
+        if SWITCH is not None and SWITCH.suspended:
+            log("refused agent connection: bridge is suspended")
+            try:
+                sock.sendall(b"0 ERR 503 \"bridge suspended\"\n")
+            except OSError:
+                pass
+            return
         dev = REGISTRY.for_peer(self.client_address[0])
         if dev is None:
             log("REFUSED agent connection from %s:%d -- not a known machine (%s)"
@@ -405,6 +488,23 @@ class ControlHandler(socketserver.StreamRequestHandler):
             # USE <name> picks which machine the rest of this connection is
             # talking to. Without it, the bridge picks the only machine that
             # has been seen, or the configured default.
+            if verb == "SUSPEND":
+                SWITCH.suspend(" ".join(args))
+                self._reply("OK", seq, *SWITCH.status())
+                continue
+            if verb == "RESUME":
+                SWITCH.resume()
+                self._reply("OK", seq, *SWITCH.status())
+                continue
+            if verb == "SWITCH":
+                self._reply("OK", seq, *SWITCH.status())
+                continue
+
+            if SWITCH.suspended and verb not in ("STATUS", "DEVICES"):
+                self._reply("ERR", seq,
+                            "bridge is SUSPENDED (%s). Resume it first." % SWITCH.reason)
+                continue
+
             if verb == "USE":
                 target = REGISTRY.by_name(args[0]) if args else None
                 if target is None:
@@ -426,7 +526,7 @@ class ControlHandler(socketserver.StreamRequestHandler):
                 continue
 
             if verb == "STATUS":
-                self._reply("OK", seq, *(dev.describe() + dev.link.status()))
+                self._reply("OK", seq, *(SWITCH.status() + dev.describe() + dev.link.status()))
                 continue
             if verb == "APPLESCRIPT":
                 try:
@@ -484,6 +584,21 @@ class ControlHandler(socketserver.StreamRequestHandler):
 
     def _reply(self, verb, seq, *args):
         self.wfile.write((protocol.encode(seq, verb, *args) + "\n").encode("ascii", "replace"))
+
+
+SUSPENDED_PAGE = """<html><head><title>Suspended</title></head>
+<body bgcolor="#0d1117" text="#e6edf3"
+      style="font:15px/1.6 'Lucida Grande',Geneva,sans-serif;padding:60px">
+<h1 style="color:#ff9d68;font-weight:normal">The bridge is suspended</h1>
+<p style="color:#8b9bb4;max-width:36em">Everything is switched off at the PC.
+No pages, no drawing, no file transfer, and no machine can connect until it is
+switched back on.</p>
+<p style="color:#8b9bb4"><b>Reason:</b> %s</p>
+</body></html>"""
+
+
+def html_escape(t):
+    return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _q(query, key):
@@ -743,6 +858,9 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         query = self.path.split("?", 1)[1] if "?" in self.path else ""
+        if SWITCH is not None and SWITCH.suspended:
+            self._send(503, "text/html", SUSPENDED_PAGE % html_escape(SWITCH.reason))
+            return
         dev = self._device()
         if dev is None:
             self._send(403, "text/plain",
@@ -753,6 +871,31 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             self._send(200, "text/html",
                        pages.index_page(dev, pages.scan_games(GAMES_DIR),
                                         any(x[2] for x in news.sections())))
+            return
+
+        if path in ("/claude-screen", "/claude-screen/"):
+            items = pages.scan_artefacts(CLAUDE_DIR)
+            if not items:
+                self._send(200, "text/html", pages.artefact_placeholder())
+                return
+            # Serve the newest artefact directly, whole page, no wrapper, so it
+            # can be anything at all -- including something interactive.
+            with open(os.path.join(CLAUDE_DIR, items[0][0]), "rb") as f:
+                self._send(200, "text/html", f.read())
+            return
+
+        if path == "/claude-screen/index":
+            self._send(200, "text/html", pages.artefact_index(pages.scan_artefacts(CLAUDE_DIR)))
+            return
+
+        if path.startswith("/claude-screen/"):
+            name = os.path.basename(path[len("/claude-screen/"):])
+            fn = os.path.join(CLAUDE_DIR, name)
+            if not name.endswith(".html") or not os.path.isfile(fn):
+                self._send(404, "text/plain", "no such artefact: %s" % name)
+                return
+            with open(fn, "rb") as f:
+                self._send(200, "text/html", f.read())
             return
 
         if path == "/news":
@@ -1093,7 +1236,7 @@ class Reusable(socketserver.ThreadingTCPServer):
 
 
 def main():
-    for d in (RUN_DIR, TO_MAC, FROM_MAC):
+    for d in (RUN_DIR, TO_MAC, FROM_MAC, GAMES_DIR, CLAUDE_DIR):
         if not os.path.isdir(d):
             os.makedirs(d)
 
@@ -1104,11 +1247,16 @@ def main():
         servers.append(("http@%s" % addr, Reusable((addr, HTTP_PORT), DisplayHandler)))
     servers.append(("control", Reusable(("127.0.0.1", CONTROL_PORT), ControlHandler)))
 
-    news.start_background()
+    global SWITCH
+    SWITCH = Switch()
+    news.start_background(lambda: SWITCH is not None and SWITCH.suspended)
     present_all()
     for name, srv in servers:
         threading.Thread(target=srv.serve_forever, name=name, daemon=True).start()
 
+    if SWITCH.suspended:
+        log("!! STARTING SUSPENDED: %s" % SWITCH.reason)
+        log("   nothing will be served until it is resumed")
     log("listening on %s -- agent :%d, http :%d; control 127.0.0.1:%d"
         % (", ".join(binds), AGENT_PORT, HTTP_PORT, CONTROL_PORT))
     if config.SUGGESTED_PC_IP not in binds:
