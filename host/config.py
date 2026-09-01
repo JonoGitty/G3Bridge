@@ -30,6 +30,12 @@ LOOPBACK_ALWAYS_OK = True     # keep 127.0.0.1 usable for the test harness
 # Only accept an agent connection from this address. None = accept any.
 ALLOWED_G3_IP = SUGGESTED_G3_IP
 
+# --- Tier 0 browser display ------------------------------------------------
+# How often the Mac's browser reloads the page. Every reload is a full page
+# teardown and rebuild in a browser with a FIXED memory partition, so this is
+# the main lever on stability, not just speed. Raise it if the Mac is unhappy.
+REFRESH_SECONDS = 5
+
 # --- file transfer ---------------------------------------------------------
 # Two drop folders. Nothing is executed, only stored and served.
 TO_MAC_DIR = "transfer/to-mac"       # PC -> Mac. Served over HTTP.

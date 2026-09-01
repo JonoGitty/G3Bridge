@@ -463,18 +463,25 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *a):
         log("http %s %s" % (self.client_address[0], fmt % a))
 
-    def _send(self, code, ctype, body, extra=None):
+    def _send(self, code, ctype, body, extra=None, cacheable=False):
         if isinstance(body, str):
             body = body.encode("ascii", "replace")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        # Netscape 4 and IE 4.5/5 cache aggressively and inconsistently. Send
-        # all three headers AND vary the URL (see the frame counter) -- either
-        # alone is not enough in practice.
-        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
-        self.send_header("Pragma", "no-cache")
-        self.send_header("Expires", "0")
+        if cacheable:
+            # A frame URL carries a counter that only advances when the picture
+            # actually changes, so each URL is immutable and can be cached hard.
+            # This is the difference between the Mac re-downloading and
+            # re-decoding a whole image every few seconds and it doing nothing
+            # at all while the screen is unchanged -- which is most of the time.
+            self.send_header("Cache-Control", "public, max-age=31536000")
+        else:
+            # Netscape 4 and IE 4.5/5 cache aggressively and inconsistently, so
+            # the page itself gets all three headers.
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -487,7 +494,7 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             ext = "gif" if raster.HAVE_PIL and os.path.exists(FRAME_GIF) else "png"
             self._send(200, "text/html", DISPLAY_PAGE % {
-                "refresh": "2", "ext": ext, "seq": FRAME_SEQ[0],
+                "refresh": str(config.REFRESH_SECONDS), "ext": ext, "seq": FRAME_SEQ[0],
                 "w": MIRROR.w, "h": MIRROR.h})
             return
 
@@ -503,7 +510,8 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             except OSError:
                 self._send(404, "text/plain", "no frame yet")
                 return
-            self._send(200, "image/gif" if fn.endswith("gif") else "image/png", body)
+            self._send(200, "image/gif" if fn.endswith("gif") else "image/png", body,
+                       cacheable=True)
             return
 
         if path == "/click":
