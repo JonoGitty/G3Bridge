@@ -56,7 +56,14 @@ def main():
     r = rpc("tools/list", {}, 2)
     tools = r.get("result", {}).get("tools", [])
     names = sorted(t["name"] for t in tools)
-    check("lists the 8 tools", len(tools) == 8, str(names))
+    EXPECTED = sorted([
+        "g3_status", "g3_draw", "g3_clear", "g3_screenshot", "g3_events",
+        "g3_send_file", "g3_transfers", "g3_read_received",
+        "g3_applescript", "g3_applet_status",
+    ])
+    check("exposes exactly the expected tools", names == EXPECTED,
+          "missing=%s unexpected=%s" % (sorted(set(EXPECTED) - set(names)),
+                                        sorted(set(names) - set(EXPECTED))))
     check("every tool has a schema", all("inputSchema" in t for t in tools))
     check("g3_draw documents the grammar",
           any("PENSIZE" in t["description"] for t in tools if t["name"] == "g3_draw"))
