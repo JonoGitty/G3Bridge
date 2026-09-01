@@ -34,6 +34,23 @@ class Device:
         self.last_seen = None
         self.http_hits = 0
         self.enrolled = {}      # what the machine reported about itself
+        self._load_enrolment()
+
+    def _load_enrolment(self):
+        """Survive a daemon restart -- otherwise the setup page tells someone
+        to redo a step they have already done."""
+        path = os.path.join(config.RUN_DIR_ABS, "enrol_%s.txt" % self.name)
+        try:
+            fh = open(path)
+        except OSError:
+            return
+        try:
+            for line in fh:
+                if "=" in line:
+                    k, v = line.strip().split("=", 1)
+                    self.enrolled[k] = v
+        finally:
+            fh.close()
 
     # -- frames ---------------------------------------------------------
     def frame_path(self, ext):
@@ -63,8 +80,11 @@ class Device:
             out.append("http_hits=%d" % self.http_hits)
         else:
             out.append("last_seen=never")
+        # Prefixed, because the machine reports its own "os" (10.5.6) and the
+        # config carries a coarser one (macosx). Two os= keys in one line means
+        # whichever parses last silently wins.
         for k in sorted(self.enrolled):
-            out.append("%s=%s" % (k, self.enrolled[k]))
+            out.append("reported_%s=%s" % (k, self.enrolled[k]))
         return out
 
 

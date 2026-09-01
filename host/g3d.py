@@ -602,51 +602,63 @@ echo "Done. Tell Claude it is enrolled."
 
 SETUP_PAGE = """<html><head><title>G3Bridge setup</title>
 <style type="text/css">
- body { background:#101420; color:#e8ecf4; font:14px/1.5 "Lucida Grande",Geneva,sans-serif;
-        margin:0; padding:28px 34px; }
- h1   { font-size:26px; margin:0 0 4px; color:#57d2ff; font-weight:normal; }
- h2   { font-size:15px; margin:26px 0 8px; color:#ffc23d; font-weight:normal;
+ body { background:#101420; color:#e8ecf4; font:14px/1.55 "Lucida Grande",Geneva,sans-serif;
+        margin:0; padding:26px 34px 60px; }
+ h1   { font-size:26px; margin:0 0 2px; color:#57d2ff; font-weight:normal; }
+ .sub { color:#8b98ad; font-size:12px; margin:0 0 26px; }
+ .step{ border-left:3px solid #2b3550; padding:2px 0 2px 18px; margin:0 0 30px; }
+ .step.on   { border-left-color:#ffc23d; }
+ .step.done { border-left-color:#3ea55f; }
+ h2   { font-size:15px; margin:0 0 6px; color:#ffc23d; font-weight:normal;
         text-transform:uppercase; letter-spacing:.08em; }
- p    { max-width:60em; color:#b9c4d6; }
- .big { background:#000; color:#7dff9b; border:2px solid #ffc23d; padding:14px 16px;
-        font:bold 17px Monaco,"Courier New",monospace; margin:10px 0 4px; }
- pre  { background:#0a0d15; border:1px solid #2b3550; color:#9fb0cc; padding:12px 14px;
-        font:11px Monaco,"Courier New",monospace; overflow:auto; max-width:60em; }
+ .step.done h2 { color:#3ea55f; }
+ p    { max-width:58em; color:#b9c4d6; margin:6px 0; }
+ .cmd { background:#000; color:#7dff9b; border:2px solid #ffc23d; padding:13px 15px;
+        font:bold 16px Monaco,"Courier New",monospace; margin:12px 0 6px; max-width:58em; }
+ .step.done .cmd { border-color:#2b3550; color:#5f7a68; font-weight:normal; }
+ pre  { background:#0a0d15; border:1px solid #2b3550; color:#93a4c0; padding:11px 13px;
+        font:11px/1.45 Monaco,"Courier New",monospace; overflow:auto; max-width:58em; }
  .note{ color:#8b98ad; font-size:12px; }
- a    { color:#57d2ff; }
- hr   { border:0; border-top:1px solid #2b3550; margin:24px 0; }
+ .tick{ color:#3ea55f; font-weight:bold; }
+ b.warn { color:#ff9d68; }
+ hr   { border:0; border-top:1px solid #2b3550; margin:26px 0; }
+ tt   { color:#d8e2f0; }
 </style></head><body>
-<h1>G3Bridge &mdash; connect this Mac</h1>
-<p class="note">You are reading this on the Mac. The PC is at %(pc)s.</p>
+<h1>G3Bridge &mdash; %(dev)s</h1>
+<p class="sub">You are reading this on the Mac. The PC is at %(pc)s.
+Terminal is in Applications &rsaquo; Utilities.</p>
 
-<h2>Type this into Terminal</h2>
-<p class="note">Applications &rsaquo; Utilities &rsaquo; Terminal</p>
-<div class="big">curl -s %(pc)s:%(port)d/s | sh</div>
-<p class="note">That is the whole thing. It should end by printing
-<b>enrolled: %(dev)s</b>.</p>
+<div class="step %(c1)s">
+<h2>Step 1 &mdash; connect it %(t1)s</h2>
+<p>%(s1)s</p>
+<div class="cmd">curl -s %(pc)s:%(port)d/s | sh</div>
+<p class="note">Adds the PC's key to <tt>~/.ssh/authorized_keys</tt> so it can log in
+without a password, and reports this machine's details back. Undo with
+<tt>rm ~/.ssh/authorized_keys</tt>. Safe to run twice.</p>
+</div>
 
-<h2>Or copy the long version</h2>
-<p class="note">Select the box below and copy it, if you would rather not type.</p>
-<pre>curl -s http://%(pc)s:%(port)d/s | sh</pre>
+<div class="step %(c2)s">
+<h2>Step 2 &mdash; lock it down</h2>
+<p>Fixes the subnet mask, turns IPv6 off, disables the modem and FireWire
+network services, and stops software update and network time. Then it
+<b>tests</b> whether the machine can still reach the internet and tells you.</p>
+<div class="cmd">curl -s %(pc)s:%(port)d/h | sudo sh</div>
+<p class="note"><b class="warn">sudo</b> will ask for your account password.
+That is you typing it &mdash; the PC never sees it. All of it is reversible in
+System Preferences &rsaquo; Network.</p>
+</div>
 
 <hr>
-<h2>What it actually does</h2>
-<p>Two things, and nothing else:</p>
-<p>1. Adds the PC's public key to <tt>~/.ssh/authorized_keys</tt>, so the PC can
-log in to this account <b>without a password</b>. That is real access &mdash; it lasts
-until you delete that file.<br>
-2. Tells the PC this machine's username, OS version and model, so nobody has to
-type them out.</p>
-<p><b>To undo it:</b> <tt>rm ~/.ssh/authorized_keys</tt></p>
+<h2>Step 2, in full</h2>
+<p class="note">Exactly what <tt>/h</tt> serves. Read it first if you like.</p>
+<pre>%(harden)s</pre>
 
-<h2>The script, in full</h2>
-<p class="note">Read it before running it if you like &mdash; this is exactly what
-<tt>/s</tt> serves.</p>
+<h2>Step 1, in full</h2>
 <pre>%(script)s</pre>
 
 <hr>
-<p class="note">This Mac has no route to the internet: no gateway and no DNS are
-set, so it can reach the PC and nothing else.</p>
+<p class="note">This Mac has no gateway and no DNS, so it can reach the PC and
+nothing else. Step 2 makes that harder to undo by accident.</p>
 </body></html>"""
 
 
@@ -836,10 +848,24 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path == "/setup":
-            script = SETUP_SCRIPT % {"pc": config.SUGGESTED_PC_IP, "port": HTTP_PORT}
-            body = SETUP_PAGE % {"pc": config.SUGGESTED_PC_IP, "port": HTTP_PORT,
-                                 "dev": dev.name,
-                                 "script": script.replace("&", "&amp;").replace("<", "&lt;")}
+            def esc(t):
+                return t.replace("&", "&amp;").replace("<", "&lt;")
+            fmt = {"pc": config.SUGGESTED_PC_IP, "port": HTTP_PORT, "ip": dev.ip}
+            enrolled = bool(dev.enrolled)
+            body = SETUP_PAGE % {
+                "pc": config.SUGGESTED_PC_IP, "port": HTTP_PORT, "dev": dev.name,
+                "c1": "done" if enrolled else "on",
+                "t1": "<span class=\"tick\">&#10003; done</span>" if enrolled else "",
+                "s1": ("Already done &mdash; this machine enrolled as <tt>%s</tt>, "
+                       "%s. Re-run it only if you reinstall."
+                       % (dev.enrolled.get("user", "?"), dev.enrolled.get("os", "?")))
+                      if enrolled else
+                      "Installs the PC's key so it can log in, and tells the PC "
+                      "what this machine is.",
+                "c2": "on" if enrolled else "",
+                "script": esc(SETUP_SCRIPT % fmt),
+                "harden": esc(HARDEN_SCRIPT % fmt),
+            }
             self._send(200, "text/html", body)
             return
 
