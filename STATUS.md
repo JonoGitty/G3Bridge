@@ -1,79 +1,87 @@
-# G3Bridge — Status
+# G3Bridge — status
+
+Built 1 Sep 2026, in one session.
 
 ## The machines
-| name | address | screen | OS | state |
-|---|---|---|---|---|
-| `g3` | 192.168.11.2 | 800x600 | Mac OS 9.2 | **thermal fault** — will not start when warm, boots after ~1h cooling. Pre-existing. |
-| `emac` | 192.168.11.3 | 1024x768 | unknown | not yet connected; OS 9 vs OS X decides the control path |
 
-Created 2026-09-01.
+| | `emac` | `g3` |
+|---|---|---|
+| hardware | eMac G4 1.25 GHz, 1 GB RAM, `PowerMac6,4` | iMac G3 |
+| OS | Mac OS X 10.5.6 (build 9G66), Darwin 9.6.0 PPC | Mac OS 9.2 |
+| address | `192.168.11.3` | `192.168.11.2` |
+| screen | 1024×768 (CRT max 1280×960) | 800×600 |
+| access | **SSH, key-based, working** | browser; agent written but unrun |
+| state | working | **thermal fault — will not start when warm** |
 
-## Goal
-Claude Code on the PC sends drawing/exec commands; an iMac G3 running Mac OS 9
-receives them over Ethernet and renders them natively.
+PC is `192.168.11.10` on a Realtek 2.5GbE adapter. Straight-through cable is
+fine: every 1000/2500BASE-T PHY does auto-MDI-X, so no crossover is needed.
 
-## Open questions (blocking exact G3-side steps)
-- [ ] Exact machine: iMac G3 model (tray-load / slot-load) — decides ports available
-- [x] ~~Exact OS version~~ **Mac OS 9.2** (Jono, 1 Sep). Not "9.7" — that release never existed.
-- [x] ~~Is the G3 on the same LAN?~~ **DIRECT ETHERNET CABLE, PC <-> iMac, no router** (Jono, 1 Sep)
-- [ ] What is already installed on it? (browser version, any dev tools, StuffIt)
+## Working and verified
 
-## Design decisions locked
-- **Transport = Ethernet/TCP, direct cable.** The iMac G3 has no serial/ADB/floppy; USB on OS 9 is awkward. Ethernet is built in.
-- **Static IPs, no DHCP.** A direct cable means nothing is handing out addresses. PC `192.168.11.10`, iMac `192.168.11.2`, mask `255.255.255.0`, no gateway.
-- **The daemon runs on WINDOWS Python (`C:\Python310`), not WSL.** WSL2 sits behind NAT, so a device on a direct cable cannot reach a listener inside it. The MCP server runs in WSL and reaches the daemon over loopback.
-- **G3 dials out to the host.** Avoids configuring inbound services on the Mac.
-- **No JSON on the G3 side.** Target runtime is old Python 2.x, which predates the `json` module. Line protocol parsed with `shlex` instead.
-- **Two tiers**, so it works before anything is installed on the Mac:
-  - Tier 0 — zero install: the Mac's browser points at the host's HTTP server.
-  - Tier 1 — full fidelity: a small agent on the Mac drawing with native QuickDraw.
+- **SSH to the eMac** — key auth, `scp` both ways, `osascript` reaching the
+  logged-in desktop session (returns the disk name and frontmost app).
+- **The site** — `/`, `/news` (8 feeds, 72 headlines), `/games` (4), `/web`,
+  `/video`, `/claude-screen`, `/display`, `/files`, `/setup`, `/boot`.
+- **Web proxy** — Wikipedia comes through as 100 KB of clean HTML from 292 KB
+  raw, 825 links and 10 images proxied, no script/iframe/handler survives.
+- **Video** — 10-minute 1080p source → 480×360 MPEG-4 Part 2 + AAC in 63 s,
+  816 kbps, `+faststart`.
+- **Multi-device** — two machines render to separate 800×600 and 1024×768
+  framebuffers; unknown device names are clean errors.
+- **Kill switch** — `g3_suspend` gives 503 on HTTP, refuses control verbs,
+  refuses agent connections, persists across a daemon restart, resumes cleanly.
+- **Isolation** — five Windows controls pass; the sixth (WSL2) reports a real
+  finding. From the Mac: `ping 8.8.8.8` 100% loss, `apple.com` unresolvable.
+- **Tests** — `tools/test_all.py`, 4 suites, all green.
 
-## Build board
-- [x] Repo scaffold
-- [x] Protocol spec (`host/protocol.py`)
-- [x] `tools/fake_g3.py` simulated client
-- [x] `tools/drive.py` manual driver
-- [x] `host/g3d.py` daemon
-- [x] `host/raster.py` shared rasteriser + host-side mirror
-- [x] `host/mcp_server.py` MCP stdio server (5 tools)
-- [x] Registered with Claude Code (`claude mcp get g3bridge` -> Connected)
-- [x] HTTP listener :9980 - Tier 0 display + bootstrap downloads
-- [x] `g3/g3agent.py` Mac OS 9 agent (Python 2.3 / Carbon)
-- [x] `g3/README-G3.txt` + `docs/SETUP.md`
-- [ ] **Untested on real hardware** - see Risks
-- [ ] Animated-GIF path for Tier 0 motion (research says this is the big win)
-- [ ] Tier 0.5: AppleScript + URL Access Scripting stay-open applet
+## Not done / unknown
 
-## Verified working (1 Sep, simulated Mac)
-- Full chain on Windows Python 3.10: MCP JSON-RPC -> g3d -> agent -> pixels. 48/48 commands.
-- `tools/test_mcp.py` 14/14 checks pass.
-- `tools/test_parser_interop.py` 12/12 - the Mac's parser agrees with the host's encoder.
-- `tools/lint_py23.py` - agent clean for Python 2.3.
-- Tier 0 with NO agent attached: draws to the mirror, serves a real GIF87a,
-  ismap click round-trips to an event.
-- Bootstrap serves .txt CR-converted and .py left as LF.
+- **The OS 9 agent has never run.** `g3/g3agent.py` and `g3/PCLink.applescript`
+  are written against verified API shapes and lint clean for Python 2.3, but no
+  code has executed on the G3. `g3agent.py selftest` draws with no network and
+  is the right first test.
+- **Nothing has been seen on a real CRT.** Every page is written for Safari 3
+  but has only been checked by fetching it. Layout on a 1024×768 CRT is unverified.
+- **`screencapture` over SSH returns a black frame** — it is not attached to
+  the console's window server on 10.5. Fix is `launchctl bsexec`, needs sudo.
+- **eMac hardening not applied** — `/h` is written and served but needs an admin
+  password nobody has to hand. Two gaps stand: subnet mask is `255.255.0.0`
+  (a /16, so the Mac treats the whole of 192.168.x.x as local, including the
+  house LAN range) and IPv6 is `Automatic` and would accept a router
+  advertisement. Neither is an active hole; nothing can currently get out.
+- **WSL2 forwards** — `ip_forward=1` with an interface on the cable subnet and
+  another on the internet with a default route. The surgical fix (an `iptables`
+  FORWARD drop that leaves Docker working) is printed by `netcheck.py` but not
+  applied; it needs sudo.
+- **Video playback smoothness on the actual G4** is untested. Big Buck Bunny is
+  converted and waiting as the first experiment.
+- **The eMac's clock reads Jan 1**, so its PRAM battery is probably flat.
 
 ## Bugs found and fixed
-- **Two readers on one socket.** The agent pump and `Link.send()` both read the
-  G3 socket, so replies were eaten and every command after the first failed.
-  Single-reader pump with per-sequence waiters now.
-- **Empty quoted string dropped by the agent parser.** `TEXT 0 0 ""` arrived with
-  a missing argument and would have thrown on the Mac. Caught by the interop test.
-- **A Python 3 syntax check cannot validate Python 2.3.** 3.14 parses
-  `except Exception, e` as a tuple of exception classes and passes it silently.
-  Hence `tools/lint_py23.py`.
-- **Stale STATUS.** Reported agent width/height while saying `state=waiting`.
 
-## Risks / still unknown
-- **Nothing has touched the real machine yet.** The Carbon calls in `g3agent.py`
-  follow verified API shapes but are unrun. `g3agent.py selftest` draws with no
-  network, which is the right first test.
-- ~~Which OS version~~ **RESOLVED: 9.2.** This clears two risks: 9.2.x ships
-  Internet Explorer 5, so PNG would work (we still send GIF, which costs nothing
-  and is unconditionally safe), and 9.2 supports CarbonLib 1.6, comfortably above
-  MacPython 2.3's 1.3 floor — so the Tier 1 agent should install cleanly.
-  Which iMac G3 revision it is remains unknown, but nothing in the design depends
-  on it: every iMac G3 has built-in 10/100 Ethernet.
-- **Cable type.** The iMac G3 likely has no auto-MDI-X. A modern gigabit NIC
-  usually compensates, but a switch between the two removes the doubt.
-- **Frame rate on Tier 0** is estimated at 1-3 fps, not measured.
+Each of these was found by testing, not by review.
+
+| bug | consequence |
+|---|---|
+| Two threads reading the same socket | The pump ate replies; every command after the first failed. |
+| Empty quoted string dropped by the agent parser | `TEXT 0 0 ""` arrived with a missing argument and would have thrown on the Mac. |
+| A Python 3 syntax check cannot validate Python 2.3 | 3.14 parses `except Exception, e` as a *tuple of exception classes* and passes silently. Hence `tools/lint_py23.py`. |
+| Pillow dithers by default | Flat artwork encoded to 135 KB instead of 15 KB, and a browser reloading that every 2 s crashed the G3. |
+| Frame URLs were uncacheable | The Mac re-downloaded an unchanged image every cycle; now 373 bytes instead of 135 KB. |
+| `bind_addresses()` enumerated instead of probing | `getaddrinfo` never returned the manual addresses, so the "cable adapter only" guarantee was silently false. |
+| Void tags in the sanitiser's drop set | `<link>` and `<meta>` emit no end tag, so the drop counter never decremented — Wikipedia came back as a **2-byte page**. |
+| Chunks decoded before joining | A split landing inside a `%0D` escape ate a character; cost a line of a 59-line listing. |
+| Stale `STATUS` fields | Reported agent width/height while saying `state=waiting`. |
+| Duplicate `os=` key | Config and machine-reported values collided; whichever parsed last silently won. |
+
+## Corrections to earlier conclusions
+
+- **MacPython 2.3.5 has no classic Mac OS build.** The first research pass called
+  it the last release; an adversarial check found no such build. It is **2.3.3**.
+- **The G3's fault is not confidently diagnosed.** "Thermal capacitors, near
+  certain" was overconfident. `docs/IMAC-G3-triage.md` puts "alive but stuck" at
+  ~40% against ~30% for the power/analogue board, and notes that no-chime is
+  weak evidence because chime volume lives in PRAM, and that RAM faults on this
+  model are *audible*.
+- **The eMac is `PowerMac6,4`**, which cannot boot OS 9 at all — so Mac OS X and
+  SSH were always the only path for it.
