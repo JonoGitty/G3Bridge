@@ -508,6 +508,98 @@ def _pct(text):
     return out.replace("\r\n", "\n").replace("\r", "\n")
 
 
+SETUP_SCRIPT = """#!/bin/sh
+# G3Bridge enrolment. Run on the Mac; safe to run twice.
+#
+# 1. installs the bridge's public key so the PC can log in without a password
+# 2. reports this machine's user, OS version and model back to the PC
+#
+# To undo everything this does:  rm ~/.ssh/authorized_keys
+
+set -e
+BRIDGE="http://%(pc)s:%(port)d"
+
+echo "G3Bridge enrolment"
+echo "  bridge: $BRIDGE"
+echo "  user  : `whoami`"
+echo
+
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+
+KEY=`curl -fsS "$BRIDGE/boot/id_g3bridge.pub"`
+if [ -z "$KEY" ]; then
+  echo "Could not fetch the key. Is the cable in and the bridge running?"
+  exit 1
+fi
+
+if grep -q "g3bridge@pc" ~/.ssh/authorized_keys 2>/dev/null; then
+  echo "Key is already installed - leaving it alone."
+else
+  echo "$KEY" >> ~/.ssh/authorized_keys
+  echo "Key installed."
+fi
+chmod 600 ~/.ssh/authorized_keys
+
+OSV=`sw_vers -productVersion 2>/dev/null || echo unknown`
+MODEL=`sysctl -n hw.model 2>/dev/null || echo unknown`
+CPU=`sysctl -n hw.cpufrequency 2>/dev/null || echo 0`
+curl -fsS "$BRIDGE/enrol?user=`whoami`&os=$OSV&model=$MODEL&cpu=$CPU&host=`hostname`" || true
+echo
+echo "Done. Tell Claude it is enrolled."
+"""
+
+
+SETUP_PAGE = """<html><head><title>G3Bridge setup</title>
+<style type="text/css">
+ body { background:#101420; color:#e8ecf4; font:14px/1.5 "Lucida Grande",Geneva,sans-serif;
+        margin:0; padding:28px 34px; }
+ h1   { font-size:26px; margin:0 0 4px; color:#57d2ff; font-weight:normal; }
+ h2   { font-size:15px; margin:26px 0 8px; color:#ffc23d; font-weight:normal;
+        text-transform:uppercase; letter-spacing:.08em; }
+ p    { max-width:60em; color:#b9c4d6; }
+ .big { background:#000; color:#7dff9b; border:2px solid #ffc23d; padding:14px 16px;
+        font:bold 17px Monaco,"Courier New",monospace; margin:10px 0 4px; }
+ pre  { background:#0a0d15; border:1px solid #2b3550; color:#9fb0cc; padding:12px 14px;
+        font:11px Monaco,"Courier New",monospace; overflow:auto; max-width:60em; }
+ .note{ color:#8b98ad; font-size:12px; }
+ a    { color:#57d2ff; }
+ hr   { border:0; border-top:1px solid #2b3550; margin:24px 0; }
+</style></head><body>
+<h1>G3Bridge &mdash; connect this Mac</h1>
+<p class="note">You are reading this on the Mac. The PC is at %(pc)s.</p>
+
+<h2>Type this into Terminal</h2>
+<p class="note">Applications &rsaquo; Utilities &rsaquo; Terminal</p>
+<div class="big">curl -s %(pc)s:%(port)d/s | sh</div>
+<p class="note">That is the whole thing. It should end by printing
+<b>enrolled: %(dev)s</b>.</p>
+
+<h2>Or copy the long version</h2>
+<p class="note">Select the box below and copy it, if you would rather not type.</p>
+<pre>curl -s http://%(pc)s:%(port)d/s | sh</pre>
+
+<hr>
+<h2>What it actually does</h2>
+<p>Two things, and nothing else:</p>
+<p>1. Adds the PC's public key to <tt>~/.ssh/authorized_keys</tt>, so the PC can
+log in to this account <b>without a password</b>. That is real access &mdash; it lasts
+until you delete that file.<br>
+2. Tells the PC this machine's username, OS version and model, so nobody has to
+type them out.</p>
+<p><b>To undo it:</b> <tt>rm ~/.ssh/authorized_keys</tt></p>
+
+<h2>The script, in full</h2>
+<p class="note">Read it before running it if you like &mdash; this is exactly what
+<tt>/s</tt> serves.</p>
+<pre>%(script)s</pre>
+
+<hr>
+<p class="note">This Mac has no route to the internet: no gateway and no DNS are
+set, so it can reach the PC and nothing else.</p>
+</body></html>"""
+
+
 DISPLAY_PAGE = """<html><head><title>G3Bridge</title>
 <meta http-equiv="refresh" content="%(refresh)s">
 </head>
@@ -644,6 +736,7 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             self._send(200, "text/html",
                 "<html><head><title>G3Bridge</title></head>"
                 "<body bgcolor=#FFFFFF><h2>G3Bridge</h2><ul>"
+                "<li><a href=\"/setup\">Set this Mac up</a> &mdash; connect it to the PC</li>"
                 "<li><a href=\"/\">Display</a> &mdash; what Claude is drawing</li>"
                 "<li><a href=\"/files\">Files from the PC</a> &mdash; download to this Mac</li>"
                 "<li><a href=\"/upload\">Send a file to the PC</a></li>"
@@ -677,6 +770,20 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             log("sent %s to the Mac (%s)" % (name, note))
             self._send(200, "application/octet-stream", body,
                        {"Content-Disposition": 'attachment; filename="%s"' % name})
+            return
+
+        if path in ("/s", "/setup.sh"):
+            body = SETUP_SCRIPT % {"pc": config.SUGGESTED_PC_IP, "port": HTTP_PORT}
+            log("%s: fetched the setup script" % dev.name)
+            self._send(200, "text/plain", body)
+            return
+
+        if path == "/setup":
+            script = SETUP_SCRIPT % {"pc": config.SUGGESTED_PC_IP, "port": HTTP_PORT}
+            body = SETUP_PAGE % {"pc": config.SUGGESTED_PC_IP, "port": HTTP_PORT,
+                                 "dev": dev.name,
+                                 "script": script.replace("&", "&amp;").replace("<", "&lt;")}
+            self._send(200, "text/html", body)
             return
 
         if path == "/enrol":
