@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<title>Asteroids</title>
+<style type="text/css">
+html,body{background:#0d1117;}
+body{color:#c9d1d9;font-family:Monaco,"Courier New",monospace;margin:0;padding:14px 0 24px 0;}
+#wrap{width:644px;margin:0 auto;}
+#hud{width:640px;height:18px;line-height:18px;color:#58a6ff;font-size:13px;margin:0 0 5px 2px;}
+#stage{position:relative;width:640px;height:480px;border:2px solid #30363d;}
+#cv{display:block;background:#0d1117;}
+#over{position:absolute;left:0;top:0;width:640px;height:480px;background:#0d1117;text-align:center;}
+#over h1{font-size:44px;letter-spacing:10px;color:#e6edf3;margin:74px 0 10px 0;font-weight:normal;}
+#over h2{font-size:22px;letter-spacing:4px;color:#ff7b72;margin:96px 0 8px 0;font-weight:normal;}
+#over p{font-size:13px;color:#8b949e;margin:5px 0;}
+#over .k{color:#f0c674;}
+#over .go{color:#7ee787;font-size:15px;margin-top:22px;}
+#banner{position:absolute;left:0;top:196px;width:640px;text-align:center;font-size:24px;letter-spacing:8px;color:#7ee787;}
+#foot{width:640px;margin:8px 0 0 2px;font-size:12px;color:#6e7681;}
+#foot a{color:#58a6ff;}
+.tbl{margin:0 auto;text-align:left;width:340px;}
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="hud">SCORE 000000   WAVE 1   SHIPS 3   BEST 000000</div>
+<div id="stage">
+<canvas id="cv" width="640" height="480"></canvas>
+<div id="banner" style="display:none;">WAVE 1</div>
+<div id="over">
+<h1>ASTEROIDS</h1>
+<div class="tbl">
+<p><span class="k">LEFT / RIGHT</span>   rotate ship</p>
+<p><span class="k">UP</span>   thrust (inertia, slight drag)</p>
+<p><span class="k">SPACE</span>   fire</p>
+<p><span class="k">H or SHIFT</span>   hyperspace (random jump, risky)</p>
+<p><span class="k">P</span>   pause</p>
+</div>
+<p class="go">PRESS ENTER OR SPACE TO START</p>
+</div>
+</div>
+<div id="foot"><a href="/games">back to games</a></div>
+</div>
+<script type="text/javascript">
+(function(){
+var cv=document.getElementById('cv');
+var ctx=cv.getContext('2d');
+var hudEl=document.getElementById('hud');
+var overEl=document.getElementById('over');
+var bannerEl=document.getElementById('banner');
+var W=640,H=480,HW=320,HH=240;
+var PI2=Math.PI*2;
+
+var keys=[],latch=[];
+var i;
+for(i=0;i<300;i++){keys[i]=false;latch[i]=false;}
+
+/* ---------- state ---------- */
+var ST_TITLE=0,ST_PLAY=1,ST_OVER=2,ST_PAUSE=3;
+var state=ST_TITLE;
+var score=0,best=0,wave=1,lives=3;
+var frame=0;
+var nextExtra=10000;
+var waveTimer=0;
+var bannerTimer=0;
+var overDelay=0;
+var hScore=-1,hWave=-1,hLives=-1,hBest=-1;
+
+/* ---------- shapes ---------- */
+var shapes=[];
+function buildShapes(){
+  var s,n,a,r,pts,q;
+  for(s=0;s<5;s++){
+    n=11;pts=[];
+    for(q=0;q<n;q++){
+      a=q/n*PI2;
+      r=0.70+Math.random()*0.44;
+      pts[pts.length]=Math.cos(a)*r;
+      pts[pts.length]=Math.sin(a)*r;
+    }
+    shapes[s]=pts;
+  }
+}
+buildShapes();
+
+/* ---------- pools ---------- */
+var MAXA=80,asts=[];
+for(i=0;i<MAXA;i++){asts[i]={x:0,y:0,vx:0,vy:0,r:0,size:0,ang:0,va:0,sh:0,alive:false};}
+
+var MAXB=40,bull=[];
+for(i=0;i<MAXB;i++){bull[i]={x:0,y:0,vx:0,vy:0,life:0,foe:false,alive:false};}
+
+var MAXP=110,parts=[];
+for(i=0;i<MAXP;i++){parts[i]={x:0,y:0,vx:0,vy:0,life:0,alive:false};}
+
+var ship={x:320,y:240,vx:0,vy:0,a:-Math.PI/2,dead:false,inv:0,hyper:0,cool:0,thrust:false,respawn:0};
+
+var ufo={alive:false,x:0,y:0,vx:0,vy:0,turn:0,fire:0,timer:900};
+
+/* ---------- helpers ---------- */
+function wrap(o){
+  if(o.x<0){o.x+=W;}else if(o.x>=W){o.x-=W;}
+  if(o.y<0){o.y+=H;}else if(o.y>=H){o.y-=H;}
+}
+function pad6(n){
+  var s=''+n;
+  while(s.length<6){s='0'+s;}
+  return s;
+}
+function freeAst(){
+  var q;
+  for(q=0;q<MAXA;q++){if(!asts[q].alive){return asts[q];}}
+  return null;
+}
+function freeBull(){
+  var q;
+  for(q=0;q<MAXB;q++){if(!bull[q].alive){return bull[q];}}
+  return null;
+}
+function radiusFor(sz){
+  if(sz==3){return 40;}
+  if(sz==2){return 21;}
+  return 11;
+}
+function makeAst(x,y,sz,spd){
+  var a=freeAst();
+  if(!a){return;}
+  var ang=Math.random()*PI2;
+  a.alive=true;a.x=x;a.y=y;a.size=sz;a.r=radiusFor(sz);
+  a.vx=Math.cos(ang)*spd;a.vy=Math.sin(ang)*spd;
+  a.ang=Math.random()*PI2;
+  a.va=(Math.random()-0.5)*0.045;
+  a.sh=Math.floor(Math.random()*5);
+  if(a.sh>4){a.sh=4;}
+}
+function baseSpeed(){
+  var s=0.55+wave*0.13;
+  if(s>2.3){s=2.3;}
+  return s;
+}
+function sizeMul(sz){
+  if(sz==3){return 1.0;}
+  if(sz==2){return 1.35;}
+  return 1.8;
+}
+function spawnWave(){
+  var n=3+wave;
+  if(n>11){n=11;}
+  var q,x,y,dx,dy,tries;
+  var sx=ship.dead?W/2:ship.x;
+  var sy=ship.dead?H/2:ship.y;
+  for(q=0;q<n;q++){
+    tries=0;
+    do{
+      x=Math.random()*W;y=Math.random()*H;
+      dx=x-sx;dy=y-sy;
+      tries++;
+    }while(dx*dx+dy*dy<150*150&&tries<40);
+    makeAst(x,y,3,baseSpeed()*(0.6+Math.random()*0.45));
+  }
+  bannerEl.innerHTML='WAVE '+wave;
+  bannerEl.style.display='';
+  bannerTimer=70;
+}
+function hideBanner(){
+  bannerTimer=0;
+  bannerEl.style.display='none';
+}
+function boom(x,y,n,spd){
+  var q,a,s,p,made=0;
+  for(q=0;q<MAXP&&made<n;q++){
+    p=parts[q];
+    if(p.alive){continue;}
+    a=Math.random()*PI2;s=spd*(0.3+Math.random()*0.9);
+    p.alive=true;p.x=x;p.y=y;p.vx=Math.cos(a)*s;p.vy=Math.sin(a)*s;
+    p.life=20+Math.floor(Math.random()*26);
+    made++;
+  }
+}
+function addScore(v){
+  score+=v;
+  while(score>=nextExtra){lives++;nextExtra+=10000;}
+  if(score>best){best=score;}
+}
+function splitAst(a){
+  var sz=a.size;
+  a.alive=false;
+  if(sz==3){addScore(20);}
+  else if(sz==2){addScore(50);}
+  else{addScore(100);}
+  boom(a.x,a.y,sz==3?12:(sz==2?9:6),1.6);
+  if(sz>1){
+    var ns=sz-1,q,sp;
+    for(q=0;q<2;q++){
+      sp=baseSpeed()*sizeMul(ns)*(0.6+Math.random()*0.5);
+      makeAst(a.x+(Math.random()-0.5)*a.r,a.y+(Math.random()-0.5)*a.r,ns,sp);
+    }
+  }
+}
+function anyAst(){
+  var q;
+  for(q=0;q<MAXA;q++){if(asts[q].alive){return true;}}
+  return false;
+}
+function clearAll(){
+  var q;
+  for(q=0;q<MAXA;q++){asts[q].alive=false;}
+  for(q=0;q<MAXB;q++){bull[q].alive=false;}
+  for(q=0;q<MAXP;q++){parts[q].alive=false;}
+  ufo.alive=false;ufo.timer=800;
+}
+function resetShip(){
+  ship.x=W/2;ship.y=H/2;ship.vx=0;ship.vy=0;ship.a=-Math.PI/2;
+  ship.dead=false;ship.inv=110;ship.cool=0;ship.hyper=0;ship.respawn=0;
+  ship.thrust=false;
+  latch[72]=false;latch[16]=false;
+}
+function startGame(){
+  clearAll();
+  score=0;wave=1;lives=3;nextExtra=10000;
+  resetShip();
+  spawnWave();
+  waveTimer=0;
+  overDelay=0;
+  ship.cool=12;
+  clearLatch();
+  state=ST_PLAY;
+  overEl.style.display='none';
+}
+function titleScene(){
+  clearAll();
+  var q;
+  for(q=0;q<7;q++){makeAst(Math.random()*W,Math.random()*H,3,0.5+Math.random()*0.5);}
+  for(q=0;q<4;q++){makeAst(Math.random()*W,Math.random()*H,2,0.8+Math.random()*0.6);}
+}
+function gameOver(){
+  state=ST_OVER;
+  overDelay=25;
+  var q;
+  for(q=0;q<MAXB;q++){bull[q].alive=false;}
+  ufo.alive=false;ufo.timer=800;
+  hideBanner();
+  overEl.innerHTML='<h2>GAME OVER</h2><p>FINAL SCORE '+pad6(score)+'</p><p>WAVE REACHED '+wave+'</p><p>BEST '+pad6(best)+'</p><p class="go">PRESS ENTER OR SPACE TO PLAY AGAIN</p>';
+  overEl.style.background='transparent';
+  overEl.style.display='';
+}
+function showTitle(){
+  state=ST_TITLE;
+  titleScene();
+  hideBanner();
+  overEl.style.background='transparent';
+  overEl.innerHTML='<h1>ASTEROIDS</h1><div class="tbl"><p><span class="k">LEFT / RIGHT</span>   rotate ship</p><p><span class="k">UP</span>   thrust</p><p><span class="k">SPACE</span>   fire</p><p><span class="k">H or SHIFT</span>   hyperspace (risky jump)</p><p><span class="k">P</span>   pause</p></div><p class="go">PRESS ENTER OR SPACE TO START</p>';
+  overEl.style.display='';
+}
+
+/* ---------- input ---------- */
+function kdown(e){
+  if(!e){e=window.event;}
+  if(!e){return true;}
+  var c=e.keyCode;
+  if(c<0||c>299){return true;}
+  if(!keys[c]){latch[c]=true;}
+  keys[c]=true;
+  if(c==32||c==37||c==38||c==39||c==40||c==13){
+    if(e.preventDefault){e.preventDefault();}
+    return false;
+  }
+  return true;
+}
+function kup(e){
+  if(!e){e=window.event;}
+  if(!e){return true;}
+  var c=e.keyCode;
+  if(c<0||c>299){return true;}
+  keys[c]=false;
+  return true;
+}
+if(document.addEventListener){
+  document.addEventListener('keydown',kdown,false);
+  document.addEventListener('keyup',kup,false);
+}
+document.onkeydown=kdown;
+document.onkeyup=kup;
+window.onblur=function(){var q;for(q=0;q<300;q++){keys[q]=false;latch[q]=false;}};
+
+function took(c){
+  if(latch[c]){latch[c]=false;return true;}
+  return false;
+}
+function clearLatch(){
+  var q;
+  for(q=0;q<300;q++){latch[q]=false;}
+}
+
+/* ---------- update ---------- */
+function updateAsts(){
+  var q,a;
+  for(q=0;q<MAXA;q++){
+    a=asts[q];
+    if(!a.alive){continue;}
+    a.x+=a.vx;a.y+=a.vy;a.ang+=a.va;
+    wrap(a);
+  }
+}
+function updateParts(){
+  var q,p;
+  for(q=0;q<MAXP;q++){
+    p=parts[q];
+    if(!p.alive){continue;}
+    p.x+=p.vx;p.y+=p.vy;
+    p.vx*=0.985;p.vy*=0.985;
+    p.life--;
+    if(p.life<=0){p.alive=false;}
+  }
+}
+function fire(){
+  var b=freeBull();
+  if(!b){return;}
+  var c=Math.cos(ship.a),s=Math.sin(ship.a);
+  b.alive=true;b.foe=false;
+  b.x=ship.x+c*13;b.y=ship.y+s*13;
+  b.vx=c*8.6+ship.vx*0.45;
+  b.vy=s*8.6+ship.vy*0.45;
+  b.life=50;
+}
+function playerBullets(){
+  var q,n=0;
+  for(q=0;q<MAXB;q++){if(bull[q].alive&&!bull[q].foe){n++;}}
+  return n;
+}
+function hyperspace(){
+  ship.x=30+Math.random()*(W-60);
+  ship.y=30+Math.random()*(H-60);
+  ship.vx=0;ship.vy=0;
+  ship.hyper=48;
+  boom(ship.x,ship.y,8,1.2);
+}
+function killShip(){
+  if(ship.dead||ship.inv>0){return;}
+  ship.dead=true;
+  ship.respawn=80;
+  ship.thrust=false;
+  boom(ship.x,ship.y,20,2.2);
+  lives--;
+}
+function spawnUfo(){
+  ufo.alive=true;
+  var left=Math.random()<0.5;
+  ufo.x=left?-24:W+24;
+  ufo.vx=left?(1.3+wave*0.05):-(1.3+wave*0.05);
+  if(ufo.vx>2.6){ufo.vx=2.6;}
+  if(ufo.vx<-2.6){ufo.vx=-2.6;}
+  ufo.y=50+Math.random()*(H-100);
+  ufo.vy=0;
+  ufo.turn=50+Math.floor(Math.random()*60);
+  ufo.fire=60;
+}
+function updateUfo(){
+  if(!ufo.alive){
+    if(wave>=2){
+      ufo.timer--;
+      if(ufo.timer<=0){spawnUfo();}
+    }
+    return;
+  }
+  ufo.x+=ufo.vx;ufo.y+=ufo.vy;
+  if(ufo.y<20){ufo.y=20;ufo.vy=0;}
+  if(ufo.y>H-20){ufo.y=H-20;ufo.vy=0;}
+  ufo.turn--;
+  if(ufo.turn<=0){
+    ufo.turn=45+Math.floor(Math.random()*70);
+    var r=Math.random();
+    ufo.vy=r<0.34?-0.85:(r<0.68?0.85:0);
+  }
+  if(ufo.x<-40||ufo.x>W+40){
+    ufo.alive=false;
+    ufo.timer=420+Math.floor(Math.random()*500);
+    return;
+  }
+  ufo.fire--;
+  if(ufo.fire<=0&&!ship.dead){
+    ufo.fire=48+Math.floor(Math.random()*30);
+    var b=freeBull();
+    if(b){
+      var dx=ship.x-ufo.x,dy=ship.y-ufo.y;
+      var ang=Math.atan2(dy,dx);
+      var spread=0.34-wave*0.02;
+      if(spread<0.05){spread=0.05;}
+      ang+=(Math.random()-0.5)*2*spread;
+      b.alive=true;b.foe=true;
+      b.x=ufo.x;b.y=ufo.y;
+      b.vx=Math.cos(ang)*4.3;b.vy=Math.sin(ang)*4.3;
+      b.life=95;
+    }
+  }
+}
+function updateShip(){
+  if(ship.dead){
+    ship.respawn--;
+    if(ship.respawn<=0){
+      if(lives>0){resetShip();}
+      else{gameOver();}
+    }
+    return;
+  }
+  if(ship.inv>0){ship.inv--;}
+  if(ship.hyper>0){ship.hyper--;}
+  if(ship.cool>0){ship.cool--;}
+  if(keys[37]||keys[65]){ship.a-=0.105;}
+  if(keys[39]||keys[68]){ship.a+=0.105;}
+  ship.thrust=(keys[38]||keys[87])?true:false;
+  if(ship.thrust){
+    ship.vx+=Math.cos(ship.a)*0.155;
+    ship.vy+=Math.sin(ship.a)*0.155;
+    if(frame%3==0){
+      var q,p,made=0;
+      for(q=0;q<MAXP&&made<1;q++){
+        p=parts[q];
+        if(p.alive){continue;}
+        p.alive=true;
+        p.x=ship.x-Math.cos(ship.a)*12;
+        p.y=ship.y-Math.sin(ship.a)*12;
+        p.vx=-Math.cos(ship.a)*1.5+(Math.random()-0.5)*0.6+ship.vx*0.4;
+        p.vy=-Math.sin(ship.a)*1.5+(Math.random()-0.5)*0.6+ship.vy*0.4;
+        p.life=10+Math.floor(Math.random()*8);
+        made++;
+      }
+    }
+  }
+  var sp=ship.vx*ship.vx+ship.vy*ship.vy;
+  if(sp>42.25){
+    var f=6.5/Math.sqrt(sp);
+    ship.vx*=f;ship.vy*=f;
+  }
+  ship.vx*=0.9935;ship.vy*=0.9935;
+  ship.x+=ship.vx;ship.y+=ship.vy;
+  wrap(ship);
+  if((keys[32]||keys[17])&&ship.cool<=0&&playerBullets()<4){
+    fire();
+    ship.cool=7;
+  }
+  if((took(72)||took(16))&&ship.hyper<=0){
+    hyperspace();
+  }
+}
+function updateBullets(){
+  var q,b;
+  for(q=0;q<MAXB;q++){
+    b=bull[q];
+    if(!b.alive){continue;}
+    b.x+=b.vx;b.y+=b.vy;
+    wrap(b);
+    b.life--;
+    if(b.life<=0){b.alive=false;}
+  }
+}
+function collide(){
+  var q,r,a,b,dx,dy,rr,ns,z;
+  for(q=0;q<MAXB;q++){
+    b=bull[q];
+    if(!b.alive){continue;}
+    if(!b.foe){
+      for(r=0;r<MAXA;r++){
+        a=asts[r];
+        if(!a.alive){continue;}
+        dx=b.x-a.x;dy=b.y-a.y;
+        if(dx>HW){dx-=W;}else if(dx<-HW){dx+=W;}
+        if(dy>HH){dy-=H;}else if(dy<-HH){dy+=H;}
+        if(dx*dx+dy*dy<a.r*a.r){
+          b.alive=false;
+          splitAst(a);
+          break;
+        }
+      }
+      if(b.alive&&ufo.alive){
+        dx=b.x-ufo.x;dy=b.y-ufo.y;
+        if(dx*dx+dy*dy<15*15){
+          b.alive=false;
+          ufo.alive=false;
+          ufo.timer=450+Math.floor(Math.random()*500);
+          boom(ufo.x,ufo.y,16,2.0);
+          addScore(400);
+        }
+      }
+    }else{
+      if(!ship.dead&&ship.inv<=0){
+        dx=b.x-ship.x;dy=b.y-ship.y;
+        if(dx>HW){dx-=W;}else if(dx<-HW){dx+=W;}
+        if(dy>HH){dy-=H;}else if(dy<-HH){dy+=H;}
+        if(dx*dx+dy*dy<100){
+          b.alive=false;
+          killShip();
+        }
+      }
+      for(r=0;r<MAXA&&b.alive;r++){
+        a=asts[r];
+        if(!a.alive){continue;}
+        dx=b.x-a.x;dy=b.y-a.y;
+        if(dx>HW){dx-=W;}else if(dx<-HW){dx+=W;}
+        if(dy>HH){dy-=H;}else if(dy<-HH){dy+=H;}
+        if(dx*dx+dy*dy<a.r*a.r){
+          b.alive=false;
+          a.alive=false;
+          boom(a.x,a.y,7,1.5);
+          if(a.size>1){
+            ns=a.size-1;
+            for(z=0;z<2;z++){
+              makeAst(a.x,a.y,ns,baseSpeed()*sizeMul(ns)*0.8);
+            }
+          }
+        }
+      }
+    }
+  }
+  if(!ship.dead&&ship.inv<=0){
+    for(r=0;r<MAXA;r++){
+      a=asts[r];
+      if(!a.alive){continue;}
+      dx=ship.x-a.x;dy=ship.y-a.y;
+      if(dx>HW){dx-=W;}else if(dx<-HW){dx+=W;}
+      if(dy>HH){dy-=H;}else if(dy<-HH){dy+=H;}
+      rr=a.r+9;
+      if(dx*dx+dy*dy<rr*rr){
+        killShip();
+        splitAst(a);
+        break;
+      }
+    }
+    if(!ship.dead&&ufo.alive){
+      dx=ship.x-ufo.x;dy=ship.y-ufo.y;
+      if(dx*dx+dy*dy<23*23){
+        killShip();
+        ufo.alive=false;
+        ufo.timer=450;
+        boom(ufo.x,ufo.y,16,2.0);
+      }
+    }
+  }
+}
+function update(){
+  updateShip();
+  updateAsts();
+  updateBullets();
+  updateParts();
+  updateUfo();
+  collide();
+  if(!anyAst()){
+    if(waveTimer<=0){waveTimer=60;}
+    waveTimer--;
+    if(waveTimer<=0){
+      wave++;
+      spawnWave();
+      waveTimer=0;
+    }
+  }
+  if(bannerTimer>0){
+    bannerTimer--;
+    if(bannerTimer<=0){bannerEl.style.display='none';}
+  }
+}
+
+/* ---------- render ---------- */
+function astPath(a,ox,oy){
+  var s=shapes[a.sh];
+  var c=Math.cos(a.ang),si=Math.sin(a.ang);
+  var r=a.r,q,px,py;
+  px=s[0]*r;py=s[1]*r;
+  ctx.moveTo(a.x+ox+px*c-py*si,a.y+oy+px*si+py*c);
+  for(q=2;q<s.length;q+=2){
+    px=s[q]*r;py=s[q+1]*r;
+    ctx.lineTo(a.x+ox+px*c-py*si,a.y+oy+px*si+py*c);
+  }
+  ctx.closePath();
+}
+function drawAsts(){
+  var q,a,dx,dy;
+  ctx.strokeStyle='#9fd0ff';
+  ctx.beginPath();
+  for(q=0;q<MAXA;q++){
+    a=asts[q];
+    if(!a.alive){continue;}
+    astPath(a,0,0);
+    dx=0;dy=0;
+    if(a.x<a.r){dx=W;}else if(a.x>W-a.r){dx=-W;}
+    if(a.y<a.r){dy=H;}else if(a.y>H-a.r){dy=-H;}
+    if(dx){astPath(a,dx,0);}
+    if(dy){astPath(a,0,dy);}
+    if(dx&&dy){astPath(a,dx,dy);}
+  }
+  ctx.stroke();
+}
+function shipPath(ox,oy){
+  var c=Math.cos(ship.a),s=Math.sin(ship.a);
+  var x=ship.x+ox,y=ship.y+oy;
+  var nx=14;
+  ctx.moveTo(x+nx*c,y+nx*s);
+  ctx.lineTo(x+(-10*c-8*s),y+(-10*s+8*c));
+  ctx.lineTo(x+(-6*c),y+(-6*s));
+  ctx.lineTo(x+(-10*c+8*s),y+(-10*s-8*c));
+  ctx.closePath();
+}
+function flamePath(ox,oy){
+  var c=Math.cos(ship.a),s=Math.sin(ship.a);
+  var x=ship.x+ox,y=ship.y+oy;
+  ctx.moveTo(x+(-7*c-4*s),y+(-7*s+4*c));
+  ctx.lineTo(x+(-17*c),y+(-17*s));
+  ctx.lineTo(x+(-7*c+4*s),y+(-7*s-4*c));
+}
+function drawShip(){
+  if(ship.dead){return;}
+  if(ship.inv>0&&((frame>>2)&1)){return;}
+  var dx=0,dy=0;
+  if(ship.x<16){dx=W;}else if(ship.x>W-16){dx=-W;}
+  if(ship.y<16){dy=H;}else if(ship.y>H-16){dy=-H;}
+  ctx.strokeStyle='#e6edf3';
+  ctx.beginPath();
+  shipPath(0,0);
+  if(dx){shipPath(dx,0);}
+  if(dy){shipPath(0,dy);}
+  if(dx&&dy){shipPath(dx,dy);}
+  ctx.stroke();
+  if(ship.thrust&&(frame&1)){
+    ctx.strokeStyle='#ff9d4d';
+    ctx.beginPath();
+    flamePath(0,0);
+    if(dx){flamePath(dx,0);}
+    if(dy){flamePath(0,dy);}
+    ctx.stroke();
+  }
+}
+function drawUfo(){
+  if(!ufo.alive){return;}
+  var x=ufo.x,y=ufo.y;
+  ctx.strokeStyle='#ff7b72';
+  ctx.beginPath();
+  ctx.moveTo(x-15,y);
+  ctx.lineTo(x-7,y-4);
+  ctx.lineTo(x+7,y-4);
+  ctx.lineTo(x+15,y);
+  ctx.lineTo(x+7,y+5);
+  ctx.lineTo(x-7,y+5);
+  ctx.closePath();
+  ctx.moveTo(x-15,y);
+  ctx.lineTo(x+15,y);
+  ctx.moveTo(x-6,y-4);
+  ctx.lineTo(x-3,y-9);
+  ctx.lineTo(x+3,y-9);
+  ctx.lineTo(x+6,y-4);
+  ctx.stroke();
+}
+function drawBullets(){
+  var q,b;
+  ctx.fillStyle='#f0c674';
+  for(q=0;q<MAXB;q++){
+    b=bull[q];
+    if(!b.alive||b.foe){continue;}
+    ctx.fillRect(b.x-1,b.y-1,3,3);
+  }
+  ctx.fillStyle='#ff7b72';
+  for(q=0;q<MAXB;q++){
+    b=bull[q];
+    if(!b.alive||!b.foe){continue;}
+    ctx.fillRect(b.x-1,b.y-1,3,3);
+  }
+}
+function drawParts(){
+  var q,p;
+  ctx.fillStyle='#c9d1d9';
+  for(q=0;q<MAXP;q++){
+    p=parts[q];
+    if(!p.alive){continue;}
+    ctx.fillRect(p.x,p.y,2,2);
+  }
+}
+function drawLives(){
+  var q,x,y;
+  ctx.strokeStyle='#7ee787';
+  ctx.beginPath();
+  for(q=0;q<lives&&q<8;q++){
+    x=14+q*16;y=20;
+    ctx.moveTo(x,y-9);
+    ctx.lineTo(x-6,y+7);
+    ctx.lineTo(x,y+3);
+    ctx.lineTo(x+6,y+7);
+    ctx.closePath();
+  }
+  ctx.stroke();
+}
+function render(){
+  ctx.fillStyle='#0d1117';
+  ctx.fillRect(0,0,W,H);
+  drawAsts();
+  drawParts();
+  drawBullets();
+  drawUfo();
+  if(state==ST_PLAY||state==ST_PAUSE){
+    drawShip();
+    drawLives();
+  }
+}
+function hud(){
+  var lv=lives<0?0:lives;
+  if(score==hScore&&wave==hWave&&lv==hLives&&best==hBest){return;}
+  hScore=score;hWave=wave;hLives=lv;hBest=best;
+  hudEl.innerHTML='SCORE '+pad6(score)+'   WAVE '+wave+'   SHIPS '+lv+'   BEST '+pad6(best);
+}
+
+/* ---------- main loop ---------- */
+function tick(){
+  frame++;
+  if(state==ST_TITLE){
+    updateAsts();
+    updateParts();
+    if(took(13)||took(32)){startGame();}
+  }else if(state==ST_PLAY){
+    if(took(80)){
+      state=ST_PAUSE;
+      overEl.style.background='transparent';
+      overEl.innerHTML='<h2>PAUSED</h2><p class="go">PRESS P TO CONTINUE</p>';
+      overEl.style.display='';
+    }else{
+      update();
+    }
+  }else if(state==ST_PAUSE){
+    if(took(80)){
+      state=ST_PLAY;
+      overEl.style.display='none';
+    }
+  }else{
+    updateAsts();
+    updateParts();
+    if(overDelay>0){overDelay--;clearLatch();}
+    else if(took(13)||took(32)){startGame();}
+  }
+  render();
+  hud();
+}
+showTitle();
+render();
+hud();
+setInterval(tick,25);
+})();
+</script>
+</body>
+</html>

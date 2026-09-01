@@ -1,0 +1,3 @@
+title=Brick Breaker
+blurb=Classic brick-breaker: steer the ball off the paddle edge, catch powerups, clear 8 levels of bricks.
+controls=Left/Right arrows (or A/D) to move, SPACE to launch, P to pause, R to restart

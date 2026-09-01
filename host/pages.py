@@ -47,7 +47,7 @@ CSS = """
 
 def _shell(title, current, body, note=""):
     tabs = [("/", "Home"), ("/news", "News"), ("/games", "Games"),
-            ("/claude-screen", "Claude"), ("/display", "Display"),
+            ("/web", "Web"), ("/claude-screen", "Claude"), ("/display", "Display"),
             ("/files", "Files"), ("/setup", "Setup")]
     nav = ""
     for href, label in tabs:
@@ -77,6 +77,12 @@ def index_page(dev, games, news_ready):
         ("/games", "Games",
          "%d game%s, written to run on this browser. Keyboard controls, nothing to install."
          % (len(games), "" if len(games) == 1 else "s")),
+        ("/web", "Web",
+         "Search and browse the internet <i>through the PC</i>. It fetches the page, "
+         "strips every script and remote resource, and sends back plain readable "
+         "HTML. This machine still opens no connection to anyone but the PC."),
+        ("/claude-screen", "Claude's screen",
+         "Whatever Claude has published for this machine to display."),
         ("/display", "Display",
          "What Claude is drawing on this machine's canvas, %dx%d. Click the picture "
          "to send the coordinates back to the PC." % (dev.canvas[0], dev.canvas[1])),
@@ -92,7 +98,7 @@ def index_page(dev, games, news_ready):
             'at %s</p>' % (who, html.escape(dev.name), dev.ip))
     body += '<div class="col">'
     for i, (href, title, blurb) in enumerate(cards):
-        if i == 3:
+        if i == (len(cards) + 1) // 2:
             body += '</div><div class="col">'
         body += ('<div class="card"><h3><a href="%s">%s</a></h3><p>%s</p></div>'
                  % (href, title, blurb))
@@ -248,3 +254,89 @@ def scan_artefacts(directory):
         out.append((n, title or n, st.st_size, st.st_mtime))
     out.sort(key=lambda r: r[3], reverse=True)
     return out
+
+
+# ---------------------------------------------------------------- web proxy
+SEARCH_BOX = ('<form action="/web" method="get">'
+              '<input type="text" name="q" value="%s" size="52" '
+              'style="background:#0a0d15;color:#e6edf3;border:1px solid #2b3550;'
+              'padding:7px 9px;font:14px \'Lucida Grande\',Geneva,sans-serif">'
+              ' <input type="submit" value="Search" '
+              'style="background:#1d2740;color:#e6edf3;border:1px solid #3a4a6b;'
+              'padding:7px 15px;font:13px \'Lucida Grande\',sans-serif">'
+              '</form>')
+
+
+def web_home(recent=None):
+    body = ('<h1>Web</h1><p class="sub">This machine has no route to the internet. '
+            'The PC fetches the page, strips out every script, stylesheet and '
+            'remote resource, and sends back plain readable HTML.</p>')
+    body += SEARCH_BOX % ""
+    body += ('<div class="card" style="margin-top:22px"><p>Or go straight to an address:</p>'
+             '<form action="/web" method="get">'
+             '<input type="text" name="u" value="https://" size="52" '
+             'style="background:#0a0d15;color:#e6edf3;border:1px solid #2b3550;padding:7px 9px">'
+             ' <input type="submit" value="Open"></form></div>')
+    body += ('<h2>Try</h2><p>'
+            + " &nbsp;&middot;&nbsp; ".join(
+                '<a href="/web?u=%s">%s</a>' % (u, n) for n, u in [
+                    ("Wikipedia", "https%3A//en.wikipedia.org/wiki/Main_Page"),
+                    ("BBC News", "https%3A//www.bbc.co.uk/news"),
+                    ("Hacker News", "https%3A//news.ycombinator.com/"),
+                    ("Low-tech Magazine", "https%3A//solar.lowtechmagazine.com/"),
+                ]) + '</p>')
+    return _shell("Web", "/web", body)
+
+
+def web_results(query, results, error=None):
+    body = '<h1>Search</h1>' + (SEARCH_BOX % html.escape(query, quote=True))
+    if error:
+        body += '<p class="warn">%s</p>' % html.escape(error)
+    elif not results:
+        body += '<p class="sub">Nothing found.</p>'
+    body += '<div style="margin-top:20px">'
+    for title, url, snippet in results:
+        import urllib.parse as _u
+        body += ('<div class="item"><div class="h"><a href="/web?u=%s">%s</a></div>'
+                 '<div class="w">%s</div>'
+                 % (_u.quote(url, safe=""), html.escape(title or url), html.escape(url[:96])))
+        if snippet:
+            body += '<div class="s">%s</div>' % html.escape(snippet)
+        body += '</div>'
+    body += '</div>'
+    return _shell("Search: " + query, "/web", body)
+
+
+def web_page(title, content, final_url, elapsed):
+    import urllib.parse as _u
+    body = ('<div style="border-bottom:1px solid #2b3550;padding-bottom:10px;margin-bottom:20px">'
+            '<h1 style="font-size:21px;margin-bottom:2px">%s</h1>'
+            '<p class="sub" style="margin:0">%s &middot; fetched by the PC in %.1fs '
+            '&middot; scripts and remote content removed &middot; '
+            '<a href="/web">new search</a></p></div>'
+            % (html.escape(title[:120]), html.escape(final_url[:110]), elapsed))
+    body += '<div class="reader">' + content + '</div>'
+    extra = """
+ .reader { max-width:52em; }
+ .reader h1,.reader h2,.reader h3 { color:#e6edf3; font-weight:normal;
+     text-transform:none; letter-spacing:0; border:0; margin:22px 0 8px; }
+ .reader h1 { font-size:22px; } .reader h2 { font-size:18px; } .reader h3 { font-size:15px; }
+ .reader p, .reader li { color:#c3cede; font-size:14px; }
+ .reader img { max-width:100%; border:1px solid #2b3550; }
+ .reader table { border-collapse:collapse; margin:12px 0; }
+ .reader td,.reader th { border:1px solid #2b3550; padding:5px 9px; font-size:13px; }
+ .reader pre { background:#0a0d15; border:1px solid #2b3550; padding:10px;
+     overflow:auto; font:12px Monaco,"Courier New",monospace; }
+ .reader blockquote { border-left:3px solid #2b3550; margin:10px 0; padding-left:14px;
+     color:#8b9bb4; }
+"""
+    page = _shell(title[:60], "/web", body)
+    return page.replace("</style>", extra + "</style>")
+
+
+def web_error(what, detail):
+    body = ('<h1>Could not load that</h1>' + (SEARCH_BOX % "")
+            + '<div class="card" style="margin-top:20px"><p class="warn">%s</p>'
+              '<p style="margin-top:8px">%s</p></div>'
+            % (html.escape(what), html.escape(detail[:300])))
+    return _shell("Web", "/web", body)

@@ -1,0 +1,3 @@
+title=Asteroids
+blurb=Vector-drawn asteroids: rotate, thrust, wrap, split the rocks, and hit hyperspace when it all goes wrong.
+controls=Left/Right rotate, Up thrust, Space fire, H or Shift hyperspace, P pause, Enter/Space start

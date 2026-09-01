@@ -33,6 +33,7 @@ import config  # noqa: E402
 import devices  # noqa: E402
 import news  # noqa: E402
 import pages  # noqa: E402
+import webproxy  # noqa: E402
 import protocol  # noqa: E402
 import raster  # noqa: E402
 import xfer  # noqa: E402
@@ -896,6 +897,46 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
                 return
             with open(fn, "rb") as f:
                 self._send(200, "text/html", f.read())
+            return
+
+        if path == "/web":
+            import time as _t
+            from urllib.parse import unquote
+            q = _pct(_q(query, "q") or "")
+            u = unquote(_q(query, "u") or "")
+            i = unquote(_q(query, "i") or "")
+
+            if i:
+                try:
+                    ctype, blob = webproxy.image(i)
+                    self._send(200, ctype, blob, cacheable=True)
+                except Exception as e:
+                    self._send(404, "text/plain", "image: %s" % e)
+                return
+
+            if u:
+                t0 = _t.time()
+                try:
+                    title, content, final = webproxy.fetch(u)
+                    log("%s: proxied %s (%d chars)" % (dev.name, final[:70], len(content)))
+                    self._send(200, "text/html",
+                               pages.web_page(title, content, final, _t.time() - t0))
+                except Exception as e:
+                    log("%s: proxy failed for %s: %s" % (dev.name, u[:60], e))
+                    self._send(200, "text/html",
+                               pages.web_error("Could not fetch that page.", str(e)))
+                return
+
+            if q:
+                try:
+                    results = webproxy.search(q)
+                    log("%s: searched %r -> %d results" % (dev.name, q[:50], len(results)))
+                    self._send(200, "text/html", pages.web_results(q, results))
+                except Exception as e:
+                    self._send(200, "text/html", pages.web_results(q, [], str(e)))
+                return
+
+            self._send(200, "text/html", pages.web_home())
             return
 
         if path == "/news":

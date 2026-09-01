@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Tetris</title>
+<style type="text/css">
+html, body {
+  background: #0d1117;
+  color: #c9d6e2;
+  margin: 0;
+  padding: 0;
+  font-family: Monaco, "Courier New", monospace;
+  font-size: 12px;
+}
+#wrap {
+  width: 440px;
+  margin: 14px auto 20px auto;
+}
+h1 {
+  font-size: 20px;
+  letter-spacing: 6px;
+  color: #4fd6d6;
+  margin: 0 0 10px 0;
+  font-weight: bold;
+}
+#stage {
+  position: relative;
+  width: 220px;
+  height: 440px;
+  float: left;
+  border: 2px solid #2b3a4a;
+}
+#c { display: block; }
+#ov {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 220px;
+  height: 440px;
+  background: #0d1117;
+  text-align: center;
+  display: none;
+}
+#ovin { margin-top: 130px; }
+.big {
+  font-size: 22px;
+  color: #ffd24a;
+  letter-spacing: 3px;
+  font-weight: bold;
+}
+.sub { color: #8fa6bb; margin-top: 14px; line-height: 18px; }
+.hot { color: #4fd6d6; }
+#side {
+  float: left;
+  width: 190px;
+  margin-left: 16px;
+}
+.nextbox {
+  border: 2px solid #2b3a4a;
+  width: 92px;
+  height: 92px;
+  background: #12181f;
+}
+.lab {
+  color: #7b8fa3;
+  letter-spacing: 2px;
+  margin: 10px 0 2px 0;
+}
+.val {
+  color: #eaf2fa;
+  font-size: 17px;
+  font-weight: bold;
+}
+#keys {
+  margin-top: 14px;
+  color: #8fa6bb;
+  line-height: 16px;
+  border-top: 1px solid #2b3a4a;
+  padding-top: 8px;
+}
+#keys b { color: #ffd24a; font-weight: bold; }
+#foot {
+  clear: both;
+  padding-top: 14px;
+  color: #6f8296;
+}
+a { color: #4fd6d6; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>TETRIS</h1>
+  <div id="stage">
+    <canvas id="c" width="220" height="440"></canvas>
+    <div id="ov"><div id="ovin"></div></div>
+  </div>
+  <div id="side">
+    <div class="lab">NEXT</div>
+    <canvas id="n" width="92" height="92" class="nextbox"></canvas>
+    <div class="lab">SCORE</div>
+    <div class="val" id="sc">0</div>
+    <div class="lab">LEVEL</div>
+    <div class="val" id="lv">1</div>
+    <div class="lab">LINES</div>
+    <div class="val" id="ln">0</div>
+    <div class="lab">BEST (SESSION)</div>
+    <div class="val" id="bs">0</div>
+    <div id="keys">
+      <b>LEFT/RIGHT</b> move<br>
+      <b>DOWN</b> soft drop<br>
+      <b>SPACE</b> hard drop<br>
+      <b>UP</b> or <b>X</b> rotate CW<br>
+      <b>Z</b> rotate CCW<br>
+      <b>P</b> pause<br>
+      <b>R</b> restart<br>
+      <b>ENTER</b> start
+    </div>
+  </div>
+  <div id="foot"><a href="/games">back to games</a></div>
+</div>
+<script type="text/javascript">
+(function () {
+  var COLS = 10, ROWS = 20, CELL = 22;
+  var TICK = 30;
+
+  var S_TITLE = 0, S_PLAY = 1, S_PAUSE = 2, S_OVER = 3;
+
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var nc = document.getElementById('n');
+  var nctx = nc.getContext('2d');
+  var ov = document.getElementById('ov');
+  var ovin = document.getElementById('ovin');
+  var elScore = document.getElementById('sc');
+  var elLevel = document.getElementById('lv');
+  var elLines = document.getElementById('ln');
+  var elBest = document.getElementById('bs');
+
+  var bcv = document.createElement('canvas');
+  bcv.width = COLS * CELL;
+  bcv.height = ROWS * CELL;
+  var bctx = bcv.getContext('2d');
+
+  var COL = ['#00c8c8', '#2f5fd0', '#e0821c', '#d8c422', '#2fb844', '#9040d8', '#d03c34'];
+  var LIT = ['#5ff0f0', '#7d9fff', '#ffc06a', '#fff07a', '#7ff08c', '#d08cff', '#ff8a7d'];
+  var DRK = ['#006e6e', '#173a86', '#8a4a06', '#8a7c08', '#166b23', '#54187f', '#7d1e18'];
+
+  var BASE = [
+    [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+    [[1,0,0],[1,1,1],[0,0,0]],
+    [[0,0,1],[1,1,1],[0,0,0]],
+    [[1,1],[1,1]],
+    [[0,1,1],[1,1,0],[0,0,0]],
+    [[0,1,0],[1,1,1],[0,0,0]],
+    [[1,1,0],[0,1,1],[0,0,0]]
+  ];
+  var KIND = ['I', 'J', 'J', 'O', 'J', 'J', 'J'];
+  var SPAWNX = [3, 3, 3, 4, 3, 3, 3];
+
+  var KJ = {
+    '01': [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+    '10': [[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+    '12': [[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+    '21': [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+    '23': [[0,0],[1,0],[1,-1],[0,2],[1,2]],
+    '32': [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+    '30': [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+    '03': [[0,0],[1,0],[1,-1],[0,2],[1,2]]
+  };
+  var KI = {
+    '01': [[0,0],[-2,0],[1,0],[-2,1],[1,-2]],
+    '10': [[0,0],[2,0],[-1,0],[2,-1],[-1,2]],
+    '12': [[0,0],[-1,0],[2,0],[-1,-2],[2,1]],
+    '21': [[0,0],[1,0],[-2,0],[1,2],[-2,-1]],
+    '23': [[0,0],[2,0],[-1,0],[2,-1],[-1,2]],
+    '32': [[0,0],[-2,0],[1,0],[-2,1],[1,-2]],
+    '30': [[0,0],[1,0],[-2,0],[1,2],[-2,-1]],
+    '03': [[0,0],[-1,0],[2,0],[-1,-2],[2,1]]
+  };
+  var KO = [[0, 0]];
+
+  /* SHAPES[piece][rot] = flat array [x0,y0,x1,y1,x2,y2,x3,y3] */
+  var SHAPES = [];
+
+  function rotCW(m) {
+    var n = m.length, out = [], y, x, row;
+    for (y = 0; y < n; y++) {
+      row = [];
+      for (x = 0; x < n; x++) { row[x] = m[n - 1 - x][y]; }
+      out[y] = row;
+    }
+    return out;
+  }
+
+  function cellsOf(m) {
+    var out = [], n = m.length, y, x;
+    for (y = 0; y < n; y++) {
+      for (x = 0; x < n; x++) {
+        if (m[y][x]) { out.push(x); out.push(y); }
+      }
+    }
+    return out;
+  }
+
+  (function buildShapes() {
+    var i, r, m;
+    for (i = 0; i < 7; i++) {
+      SHAPES[i] = [];
+      m = BASE[i];
+      for (r = 0; r < 4; r++) {
+        SHAPES[i][r] = cellsOf(m);
+        m = rotCW(m);
+      }
+    }
+  })();
+
+  var board = [];
+  var state = S_TITLE;
+  var score = 0, lines = 0, level = 1, best = 0;
+  var cur = 0, curR = 0, curX = 0, curY = 0, nextP = 0;
+  var bag = [], bagN = 0;
+  var gAcc = 0;
+  var dasDir = 0, dasT = 0, dasOn = false;
+  var softT = 0, holdDown = false;
+  var dirty = true;
+  var lastEvt = null;
+  var held = {};
+  var ONESHOT = { 13: 1, 32: 1, 38: 1, 80: 1, 82: 1, 88: 1, 90: 1 };
+  var shSc = -1, shLv = -1, shLn = -1, shBs = -1;
+
+  function newBoard() {
+    var y, x, row;
+    board = [];
+    for (y = 0; y < ROWS; y++) {
+      row = [];
+      for (x = 0; x < COLS; x++) { row[x] = -1; }
+      board[y] = row;
+    }
+  }
+
+  function refillBag() {
+    var a = [0, 1, 2, 3, 4, 5, 6], i, j, t;
+    for (i = a.length - 1; i > 0; i--) {
+      j = Math.floor(Math.random() * (i + 1));
+      t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    bag = a;
+    bagN = 0;
+  }
+
+  function drawBag() {
+    if (bagN >= bag.length) { refillBag(); }
+    var p = bag[bagN];
+    bagN++;
+    return p;
+  }
+
+  function collide(p, r, px, py) {
+    var s = SHAPES[p][r], i, x, y;
+    for (i = 0; i < 8; i += 2) {
+      x = px + s[i];
+      y = py + s[i + 1];
+      if (x < 0 || x >= COLS || y < 0 || y >= ROWS) { return true; }
+      if (board[y][x] >= 0) { return true; }
+    }
+    return false;
+  }
+
+  function drawBlock(g, px, py, p) {
+    g.fillStyle = COL[p];
+    g.fillRect(px, py, CELL, CELL);
+    g.fillStyle = LIT[p];
+    g.fillRect(px, py, CELL, 3);
+    g.fillRect(px, py, 3, CELL);
+    g.fillStyle = DRK[p];
+    g.fillRect(px, py + CELL - 3, CELL, 3);
+    g.fillRect(px + CELL - 3, py, 3, CELL);
+  }
+
+  function rebuildBoard() {
+    var x, y, v;
+    bctx.fillStyle = '#12181f';
+    bctx.fillRect(0, 0, COLS * CELL, ROWS * CELL);
+    bctx.fillStyle = '#1c2531';
+    for (x = 1; x < COLS; x++) { bctx.fillRect(x * CELL, 0, 1, ROWS * CELL); }
+    for (y = 1; y < ROWS; y++) { bctx.fillRect(0, y * CELL, COLS * CELL, 1); }
+    for (y = 0; y < ROWS; y++) {
+      for (x = 0; x < COLS; x++) {
+        v = board[y][x];
+        if (v >= 0) { drawBlock(bctx, x * CELL, y * CELL, v); }
+      }
+    }
+  }
+
+  function ghostY() {
+    var y = curY;
+    while (!collide(cur, curR, curX, y + 1)) { y++; }
+    return y;
+  }
+
+  function render() {
+    ctx.drawImage(bcv, 0, 0);
+    var s = SHAPES[cur][curR], i, x, y, gy;
+    if (state === S_PLAY) {
+      gy = ghostY();
+      if (gy !== curY) {
+        ctx.strokeStyle = COL[cur];
+        ctx.lineWidth = 1;
+        for (i = 0; i < 8; i += 2) {
+          x = (curX + s[i]) * CELL;
+          y = (gy + s[i + 1]) * CELL;
+          if (y >= 0) { ctx.strokeRect(x + 1.5, y + 1.5, CELL - 3, CELL - 3); }
+        }
+      }
+    }
+    for (i = 0; i < 8; i += 2) {
+      x = curX + s[i];
+      y = curY + s[i + 1];
+      if (y >= 0) { drawBlock(ctx, x * CELL, y * CELL, cur); }
+    }
+    dirty = false;
+  }
+
+  function renderNext() {
+    var s = SHAPES[nextP][0], i, minx = 9, maxx = -9, miny = 9, maxy = -9, x, y, cs = 20, ox, oy;
+    nctx.fillStyle = '#12181f';
+    nctx.fillRect(0, 0, 92, 92);
+    for (i = 0; i < 8; i += 2) {
+      x = s[i]; y = s[i + 1];
+      if (x < minx) { minx = x; }
+      if (x > maxx) { maxx = x; }
+      if (y < miny) { miny = y; }
+      if (y > maxy) { maxy = y; }
+    }
+    ox = Math.floor((92 - (maxx - minx + 1) * cs) / 2) - minx * cs;
+    oy = Math.floor((92 - (maxy - miny + 1) * cs) / 2) - miny * cs;
+    for (i = 0; i < 8; i += 2) {
+      x = ox + s[i] * cs;
+      y = oy + s[i + 1] * cs;
+      nctx.fillStyle = COL[nextP];
+      nctx.fillRect(x, y, cs, cs);
+      nctx.fillStyle = LIT[nextP];
+      nctx.fillRect(x, y, cs, 3);
+      nctx.fillRect(x, y, 3, cs);
+      nctx.fillStyle = DRK[nextP];
+      nctx.fillRect(x, y + cs - 3, cs, 3);
+      nctx.fillRect(x + cs - 3, y, 3, cs);
+    }
+  }
+
+  function updateStats() {
+    if (score !== shSc) { elScore.innerHTML = '' + score; shSc = score; }
+    if (level !== shLv) { elLevel.innerHTML = '' + level; shLv = level; }
+    if (lines !== shLn) { elLines.innerHTML = '' + lines; shLn = lines; }
+    if (best !== shBs) { elBest.innerHTML = '' + best; shBs = best; }
+  }
+
+  function showOverlay(html) {
+    ovin.innerHTML = html;
+    ov.style.display = 'block';
+  }
+
+  function hideOverlay() {
+    ov.style.display = 'none';
+  }
+
+  function gravityMs() {
+    var ms = 800 - (level - 1) * 62;
+    if (ms < 90) { ms = 90; }
+    return ms;
+  }
+
+  function spawn() {
+    cur = nextP;
+    nextP = drawBag();
+    curR = 0;
+    curX = SPAWNX[cur];
+    curY = 0;
+    gAcc = 0;
+    softT = 0;
+    renderNext();
+    if (collide(cur, curR, curX, curY)) {
+      gameOver();
+      return;
+    }
+    dirty = true;
+  }
+
+  function gameOver() {
+    state = S_OVER;
+    if (score > best) { best = score; }
+    updateStats();
+    render();
+    showOverlay('<div class="big">GAME OVER</div><div class="sub">SCORE ' + score +
+      '<br>LINES ' + lines + '<br><br>PRESS <span class="hot">R</span><br>TO PLAY AGAIN</div>');
+  }
+
+  function clearLines() {
+    var y, x, full, n = 0, row, i;
+    for (y = ROWS - 1; y >= 0; y--) {
+      full = true;
+      for (x = 0; x < COLS; x++) {
+        if (board[y][x] < 0) { full = false; break; }
+      }
+      if (full) {
+        board.splice(y, 1);
+        row = [];
+        for (i = 0; i < COLS; i++) { row[i] = -1; }
+        board.unshift(row);
+        n++;
+        y++;
+      }
+    }
+    if (n > 0) {
+      var pts = 0;
+      if (n === 1) { pts = 100; }
+      else if (n === 2) { pts = 300; }
+      else if (n === 3) { pts = 500; }
+      else { pts = 800; }
+      score += pts * level;
+      lines += n;
+      level = Math.floor(lines / 10) + 1;
+      if (level > 20) { level = 20; }
+    }
+    return n;
+  }
+
+  function lockPiece() {
+    var s = SHAPES[cur][curR], i, x, y;
+    for (i = 0; i < 8; i += 2) {
+      x = curX + s[i];
+      y = curY + s[i + 1];
+      if (y >= 0 && y < ROWS && x >= 0 && x < COLS) { board[y][x] = cur; }
+    }
+    clearLines();
+    rebuildBoard();
+    updateStats();
+    spawn();
+  }
+
+  function stepDown(soft) {
+    if (!collide(cur, curR, curX, curY + 1)) {
+      curY++;
+      if (soft) { score += 1; updateStats(); }
+      dirty = true;
+      return true;
+    }
+    lockPiece();
+    return false;
+  }
+
+  function move(dx) {
+    if (!collide(cur, curR, curX + dx, curY)) {
+      curX += dx;
+      dirty = true;
+    }
+  }
+
+  function rotate(dir) {
+    var nr = (curR + (dir > 0 ? 1 : 3)) % 4;
+    var tbl, key = '' + curR + nr, k, i, kx, ky;
+    if (KIND[cur] === 'O') { tbl = KO; }
+    else if (KIND[cur] === 'I') { tbl = KI[key]; }
+    else { tbl = KJ[key]; }
+    if (!tbl) { tbl = KO; }
+    for (i = 0; i < tbl.length; i++) {
+      k = tbl[i];
+      kx = curX + k[0];
+      ky = curY + k[1];
+      if (!collide(cur, nr, kx, ky)) {
+        curR = nr;
+        curX = kx;
+        curY = ky;
+        dirty = true;
+        return;
+      }
+    }
+  }
+
+  function hardDrop() {
+    var n = 0;
+    while (!collide(cur, curR, curX, curY + 1)) { curY++; n++; }
+    score += n * 2;
+    updateStats();
+    lockPiece();
+    dirty = true;
+  }
+
+  function startGame() {
+    if (score > best) { best = score; }
+    newBoard();
+    rebuildBoard();
+    score = 0;
+    lines = 0;
+    level = 1;
+    gAcc = 0;
+    softT = 0;
+    dasDir = 0;
+    dasT = 0;
+    dasOn = false;
+    holdDown = false;
+    refillBag();
+    nextP = drawBag();
+    state = S_PLAY;
+    hideOverlay();
+    spawn();
+    updateStats();
+    if (state === S_PLAY) { render(); }
+  }
+
+  function titleScreen() {
+    state = S_TITLE;
+    newBoard();
+    rebuildBoard();
+    ctx.drawImage(bcv, 0, 0);
+    updateStats();
+    nctx.fillStyle = '#12181f';
+    nctx.fillRect(0, 0, 92, 92);
+    showOverlay('<div class="big">TETRIS</div><div class="sub">STACK THEM,<br>CLEAR THEM.<br><br>' +
+      'PRESS <span class="hot">ENTER</span><br>TO START</div>');
+  }
+
+  function togglePause() {
+    if (state === S_PLAY) {
+      state = S_PAUSE;
+      dasDir = 0;
+      holdDown = false;
+      showOverlay('<div class="big">PAUSED</div><div class="sub">PRESS <span class="hot">P</span><br>TO RESUME</div>');
+    } else if (state === S_PAUSE) {
+      state = S_PLAY;
+      hideOverlay();
+      dirty = true;
+      render();
+    }
+  }
+
+  function tick() {
+    if (state !== S_PLAY) { return; }
+
+    if (dasDir !== 0) {
+      dasT += TICK;
+      if (!dasOn) {
+        if (dasT >= 160) { dasOn = true; dasT = 0; move(dasDir); }
+      } else if (dasT >= 45) {
+        dasT = 0;
+        move(dasDir);
+      }
+    }
+
+    if (holdDown && state === S_PLAY) {
+      softT += TICK;
+      if (softT >= 45) {
+        softT = 0;
+        stepDown(true);
+      }
+    }
+
+    if (state !== S_PLAY) { return; }
+
+    gAcc += TICK;
+    if (gAcc >= gravityMs()) {
+      gAcc = 0;
+      stepDown(false);
+    }
+
+    if (state === S_PLAY && dirty) { render(); }
+  }
+
+  function stop(e) {
+    if (e.preventDefault) { e.preventDefault(); }
+    e.returnValue = false;
+    return false;
+  }
+
+  function onKeyDown(e) {
+    e = e || window.event;
+    if (e === lastEvt) { return true; }
+    lastEvt = e;
+    var k = e.keyCode ? e.keyCode : e.which;
+    var repeat = held[k] ? true : false;
+    held[k] = 1;
+    if (repeat && ONESHOT[k]) { return stop(e); }
+
+    if (k === 82) { startGame(); return stop(e); }
+    if (k === 80) { togglePause(); return stop(e); }
+    if (k === 13) {
+      if (state === S_TITLE || state === S_OVER) { startGame(); }
+      return stop(e);
+    }
+    if (state === S_TITLE || state === S_OVER) {
+      if (k === 32) { startGame(); return stop(e); }
+      return true;
+    }
+    if (state !== S_PLAY) { return true; }
+
+    if (k === 37) {
+      if (dasDir !== -1) { dasDir = -1; dasT = 0; dasOn = false; move(-1); }
+      if (dirty) { render(); }
+      return stop(e);
+    }
+    if (k === 39) {
+      if (dasDir !== 1) { dasDir = 1; dasT = 0; dasOn = false; move(1); }
+      if (dirty) { render(); }
+      return stop(e);
+    }
+    if (k === 40) {
+      if (!holdDown) { holdDown = true; softT = 0; stepDown(true); }
+      if (state === S_PLAY && dirty) { render(); }
+      return stop(e);
+    }
+    if (k === 38 || k === 88) {
+      rotate(1);
+      if (dirty) { render(); }
+      return stop(e);
+    }
+    if (k === 90) {
+      rotate(-1);
+      if (dirty) { render(); }
+      return stop(e);
+    }
+    if (k === 32) {
+      hardDrop();
+      if (state === S_PLAY && dirty) { render(); }
+      return stop(e);
+    }
+    return true;
+  }
+
+  function onKeyUp(e) {
+    e = e || window.event;
+    if (e === lastEvt) { return true; }
+    lastEvt = e;
+    var k = e.keyCode ? e.keyCode : e.which;
+    held[k] = 0;
+    if (k === 37 && dasDir === -1) { dasDir = 0; }
+    if (k === 39 && dasDir === 1) { dasDir = 0; }
+    if (k === 40) { holdDown = false; }
+    return true;
+  }
+
+  function clearKeys() {
+    held = {};
+    dasDir = 0;
+    dasOn = false;
+    holdDown = false;
+    return true;
+  }
+
+  if (document.addEventListener) {
+    document.addEventListener('keydown', onKeyDown, false);
+    document.addEventListener('keyup', onKeyUp, false);
+  }
+  document.onkeydown = onKeyDown;
+  document.onkeyup = onKeyUp;
+  window.onblur = clearKeys;
+
+  titleScreen();
+  setInterval(tick, TICK);
+})();
+</script>
+</body>
+</html>

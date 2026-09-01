@@ -1,0 +1,3 @@
+title=Tetris
+blurb=The classic falling-block game: seven tetrominoes, wall-kick rotation, hard drop, next-piece preview and a level curve that speeds up as you clear lines.
+controls=Arrow keys move / soft drop, Up or X rotate CW, Z rotate CCW, Space hard drop, P pause, R restart, Enter start

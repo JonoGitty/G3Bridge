@@ -1,0 +1,3 @@
+title=Snake
+blurb=Grid snake with timed gold bonus pellets and a switchable walls/wrap mode.
+controls=Arrows or WASD to steer, P pause, M walls/wrap, SPACE start & restart
