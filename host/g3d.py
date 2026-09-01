@@ -679,6 +679,28 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
                        {"Content-Disposition": 'attachment; filename="%s"' % name})
             return
 
+        if path == "/enrol":
+            # A machine introducing itself. Whatever key=value pairs it sends
+            # get recorded, so one pasted command on the Mac can report its
+            # user, OS version and model without anyone typing them back.
+            info = {}
+            for pair in query.split("&"):
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    info[k] = _pct(v).strip()
+            if info:
+                dev.enrolled = info
+                log("%s ENROLLED: %s" % (dev.name,
+                    "  ".join("%s=%s" % kv for kv in sorted(info.items()))))
+                try:
+                    with open(os.path.join(RUN_DIR, "enrol_%s.txt" % dev.name), "w") as fh:
+                        for k in sorted(info):
+                            fh.write("%s=%s\n" % (k, info[k]))
+                except OSError:
+                    pass
+            self._send(200, "text/plain", "enrolled: %s\n" % dev.name)
+            return
+
         if path == "/hello":
             log("%s: applet started (tag=%s)" % (dev.name, _q(query, "t")))
             self._send(200, "text/plain", "OK\r")

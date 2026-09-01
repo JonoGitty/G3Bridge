@@ -33,6 +33,7 @@ class Device:
         self.first_seen = None
         self.last_seen = None
         self.http_hits = 0
+        self.enrolled = {}      # what the machine reported about itself
 
     # -- frames ---------------------------------------------------------
     def frame_path(self, ext):
@@ -62,6 +63,8 @@ class Device:
             out.append("http_hits=%d" % self.http_hits)
         else:
             out.append("last_seen=never")
+        for k in sorted(self.enrolled):
+            out.append("%s=%s" % (k, self.enrolled[k]))
         return out
 
 

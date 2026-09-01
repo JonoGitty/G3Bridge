@@ -1,0 +1,28 @@
+# G3Bridge SSH config for the vintage Macs.
+#
+# Used with:  ssh -F host/ssh/config emac
+# so nothing here touches your personal ~/.ssh/config.
+#
+# The algorithm lines are NOT optional. A modern OpenSSH client has removed
+# every key exchange, host key type and cipher that a 2003-era sshd offers --
+# they are still compiled in, just disabled by default. Without these the
+# connection dies at "no matching key exchange method found".
+#
+# Use the WINDOWS ssh.exe (C:\Windows\System32\OpenSSH\ssh.exe). WSL's newer
+# OpenSSH has REMOVED ssh-dss entirely rather than merely disabling it.
+
+Host emac
+    HostName 192.168.11.3
+    IdentityFile ~/.ssh/id_g3bridge
+    IdentitiesOnly yes
+    KexAlgorithms +diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1
+    HostKeyAlgorithms +ssh-rsa,ssh-dss
+    PubkeyAcceptedAlgorithms +ssh-rsa
+    Ciphers +aes128-cbc,3des-cbc
+    MACs +hmac-sha1,hmac-md5
+    # The Mac is on an isolated cable and may be reinstalled; a changed host
+    # key is expected here and should not block the connection.
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+    ConnectTimeout 10
