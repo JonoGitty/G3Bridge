@@ -234,6 +234,8 @@ class CommandQueue:
         self._inflight = None         # collected, awaiting a result
         self._done = threading.Event()
         self._result = None
+        self._status = "OK"
+        self._chunks = {}
         self.last_poll = None
         self.polls = 0
 
@@ -243,6 +245,8 @@ class CommandQueue:
                 raise IOError("a command is already outstanding")
             self._pending = script
             self._result = None
+            self._status = "OK"
+            self._chunks = {}
             self._done.clear()
         if not self._done.wait(timeout):
             with self._lock:
@@ -255,6 +259,8 @@ class CommandQueue:
                    "" if not self.last_poll
                    else ", last %ds ago" % int(time.time() - self.last_poll)))
         with self._lock:
+            if self._status and self._status != "OK":
+                return "[%s] %s" % (self._status, self._result or "")
             return self._result
 
     def collect(self):
@@ -268,15 +274,42 @@ class CommandQueue:
             self._pending = None
             return self._inflight
 
-    def deliver(self, text):
-        """Called by the result endpoint."""
+    def deliver(self, text, status="OK"):
+        """Called by the result endpoint once a whole result has arrived."""
         with self._lock:
             if self._inflight is None:
                 return False
             self._result = text
+            self._status = status
             self._inflight = None
+            self._chunks = {}
         self._done.set()
         return True
+
+    def add_chunk(self, seq, part, total, status, raw):
+        """Accumulate one chunk of a chunked result.
+
+        The Mac returns output by smuggling it through GET query strings, in
+        pieces, because URL Access Scripting has no dependable HTTP upload.
+        Chunks are idempotent: a retry carries the same part number and simply
+        overwrites.
+
+        Chunks are stored STILL PERCENT-ENCODED and decoded once at the end.
+        Decoding each chunk separately loses characters whenever a split lands
+        in the middle of a %XX escape -- which cost a line of output the first
+        time this was tested. Joining first makes the host correct no matter
+        how the Mac chooses to split.
+        """
+        with self._lock:
+            self._chunks[part] = raw
+            got = len(self._chunks)
+            if got < total:
+                return False, got
+            keys = list(self._chunks.keys())
+            keys.sort()
+            joined = "".join([self._chunks[k] for k in keys])
+        self.deliver(_pct(joined), status)
+        return True, total
 
     def status(self):
         with self._lock:
@@ -440,6 +473,32 @@ class ControlHandler(socketserver.StreamRequestHandler):
         self.wfile.write((protocol.encode(seq, verb, *args) + "\n").encode("ascii", "replace"))
 
 
+def _q(query, key):
+    """One query parameter, undecoded."""
+    for pair in query.split("&"):
+        if pair.startswith(key + "="):
+            return pair[len(key) + 1:]
+    return None
+
+
+def _pct(text):
+    """Percent-decode, then read as MacRoman with CR line endings.
+
+    Classic AppleScript writes MacRoman, not UTF-8, and terminates lines with
+    CR. Decoding as UTF-8 mangles every accented character.
+    """
+    from urllib.parse import unquote_to_bytes
+    try:
+        raw = unquote_to_bytes(text.replace("+", "%20"))
+    except Exception:
+        return text
+    try:
+        out = raw.decode("mac_roman")
+    except (UnicodeDecodeError, LookupError):
+        out = raw.decode("latin-1", "replace")
+    return out.replace("\r\n", "\n").replace("\r", "\n")
+
+
 DISPLAY_PAGE = """<html><head><title>G3Bridge</title>
 <meta http-equiv="refresh" content="%(refresh)s">
 </head>
@@ -566,7 +625,7 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             # SimpleText and Script Editor want CR line endings. Do NOT do
             # this to .py -- MacPython reads LF source fine and a botched
             # conversion would break the agent.
-            if name.endswith((".txt", ".scpt")):
+            if name.endswith((".txt", ".scpt", ".applescript")):
                 body = body.replace(b"\r\n", b"\n").replace(b"\n", b"\r")
             self._send(200, "application/octet-stream", body,
                        {"Content-Disposition": 'attachment; filename="%s"' % name})
@@ -611,30 +670,57 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
                        {"Content-Disposition": 'attachment; filename="%s"' % name})
             return
 
+        if path == "/hello":
+            log("%s: applet started (tag=%s)" % (dev.name, _q(query, "t")))
+            self._send(200, "text/plain", "OK\r")
+            return
+
         if path == "/cmd":
             script = dev.queue.collect()
             if script is None:
-                # Empty body is the applet's "nothing to do" signal.
-                self._send(200, "text/plain", "")
+                # NEVER an empty body: a zero-length download can raise
+                # kURLFileEmptyError (-30783) on the Mac.
+                self._send(200, "text/plain", "NONE\r")
                 return
-            # Classic Mac wants CR. run script on a LF-only string is asking
-            # for trouble on OS 9.
+            # Classic Mac wants CR. Compiling a LF-only string on OS 9 is
+            # asking for trouble.
             body = script.replace("\r\n", "\n").replace("\n", "\r")
-            log("dispatched %d chars of script to the Mac" % len(script))
+            log("%s: dispatched %d chars of script" % (dev.name, len(script)))
             self._send(200, "text/plain", body)
             return
 
+        if path == "/r":
+            # The Mac returns output smuggled through GET query strings, in
+            # chunks, because URL Access Scripting has no dependable HTTP
+            # upload. Chunks are idempotent: a retry overwrites its part.
+            try:
+                seq = int(_q(query, "i") or "0")
+                part = int(_q(query, "p") or "1")
+                total = int(_q(query, "n") or "1")
+            except ValueError:
+                self._send(200, "text/plain", "OK\r")
+                return
+            status = (_q(query, "s") or "OK").upper()
+            raw = _q(query, "d") or ""
+            done, got = dev.queue.add_chunk(seq, part, total, status, raw)
+            log("%s: result chunk %d/%d (%s, %d encoded chars)%s"
+                % (dev.name, part, total, status, len(raw),
+                   "  COMPLETE" if done else ""))
+            self._send(200, "text/plain", "OK\r")
+            return
+
+        if path.startswith("/put"):
+            # Diagnostic catch-all. URL Access Scripting's `upload` behaviour
+            # over http:// is undocumented; if it is ever tried, this records
+            # exactly what it sent so the question can be settled by evidence.
+            log("%s: /put GET path=%s headers=%s"
+                % (dev.name, path, list(dict(self.headers).keys())))
+            self._send(200, "text/plain", "OK\r")
+            return
+
         if path == "/result":
-            # GET fallback: the applet may smuggle output back in the query
-            # string if URL Access Scripting's upload turns out to be unusable
-            # for http:// destinations.
-            from urllib.parse import unquote_plus
-            out = ""
-            for pair in query.split("&"):
-                if pair.startswith("out="):
-                    out = unquote_plus(pair[4:])
-            ok = dev.queue.deliver(out)
-            self._send(200, "text/plain", "ok" if ok else "nothing was outstanding")
+            ok = dev.queue.deliver(_pct(_q(query, "out") or ""))
+            self._send(200, "text/plain", "OK\r" if ok else "NONE\r")
             return
 
         if path == "/upload":
@@ -684,6 +770,18 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             log("result from the Mac: %d chars%s"
                 % (len(text), "" if ok else " (nothing was outstanding)"))
             self._send(200, "text/plain", "ok" if ok else "nothing was outstanding")
+            return
+
+        if self.path.split("?", 1)[0].startswith("/put"):
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            body = self.rfile.read(length) if length > 0 else b""
+            log("%s: /put %s path=%s ctype=%r bytes=%d first=%r"
+                % (dev.name, self.command, self.path,
+                   self.headers.get("Content-Type"), len(body), body[:60]))
+            self._send(200, "text/plain", "OK\r")
             return
 
         if self.path.split("?", 1)[0] != "/upload":
