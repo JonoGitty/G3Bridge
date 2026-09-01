@@ -56,7 +56,7 @@ def main():
     r = rpc("tools/list", {}, 2)
     tools = r.get("result", {}).get("tools", [])
     names = sorted(t["name"] for t in tools)
-    check("lists 4 tools", len(tools) == 4, str(names))
+    check("lists the 5 tools", len(tools) == 5, str(names))
     check("every tool has a schema", all("inputSchema" in t for t in tools))
     check("g3_draw documents the grammar",
           any("PENSIZE" in t["description"] for t in tools if t["name"] == "g3_draw"))

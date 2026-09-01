@@ -13,12 +13,14 @@ Env:
     G3D_PORT  default 9991
 """
 
+import base64
 import json
 import os
 import socket
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import config  # noqa: E402
 import protocol  # noqa: E402
 
 # On Windows, text-mode stdout translates \n to \r\n, which corrupts the
@@ -29,13 +31,16 @@ for stream in (sys.stdout, sys.stderr):
     except AttributeError:
         pass
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+FRAME_PNG = os.path.join(HERE, "..", "run", "frame.png")
+
 G3D_HOST = os.environ.get("G3D_HOST", "127.0.0.1")
-G3D_PORT = int(os.environ.get("G3D_PORT", "9991"))
+G3D_PORT = int(os.environ.get("G3D_PORT", str(config.CONTROL_PORT)))
 SERVER_VERSION = "0.1.0"
 SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
-GRAMMAR = """Each command is one line. Coordinates are pixels, origin top-left.
-Colours are 0-255 per channel.
+GRAMMAR = """The canvas is %d x %d. Each command is one line.
+Coordinates are pixels, origin top-left. Colours are 0-255 per channel.
 
   CLEAR [r g b]            erase the screen (default black)
   PEN r g b                set the drawing colour
@@ -47,8 +52,9 @@ Colours are 0-255 per channel.
   OVAL x1 y1 x2 y2 [FILL]  ellipse inscribed in that rectangle
   PIXEL x y                single pixel
   TEXT x y "string" [size] text, x,y is the LEFT BASELINE
-  FONT name                typeface, e.g. Geneva, Chicago, Monaco
-  FLUSH                    present the buffer (added automatically)"""
+  FONT name                Geneva, Chicago, Monaco, Courier
+  FLUSH                    present the buffer (added automatically)""" % (
+    config.CANVAS_W, config.CANVAS_H)
 
 
 def log(msg):
@@ -157,6 +163,14 @@ TOOLS = [
         },
     },
     {
+        "name": "g3_screenshot",
+        "description": (
+            "Look at what is currently displayed on the iMac G3's screen. Returns "
+            "the image. Use this to check your own drawing came out right, or to "
+            "see the current state before adding to it."),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "g3_events",
         "description": (
             "Drain input events the iMac G3 has sent back since the last call "
@@ -197,6 +211,15 @@ def call_tool(name, args):
             cmds.append("FLUSH")
         text, err = render_results(daemon_exec(cmds))
         return text, err
+
+    if name == "g3_screenshot":
+        # The daemon writes the mirror here on every FLUSH.
+        daemon_exec(["FLUSH"])
+        if not os.path.exists(FRAME_PNG):
+            return "Nothing has been drawn yet.", True
+        with open(FRAME_PNG, "rb") as fh:
+            data = base64.b64encode(fh.read()).decode("ascii")
+        return {"image": data, "mime": "image/png"}, False
 
     if name == "g3_events":
         results = daemon_exec(["EVENTS"])
@@ -263,7 +286,11 @@ def handle(msg):
         except Exception as e:                    # never kill the server on a bad call
             log("tool %s raised %s: %s" % (name, type(e).__name__, e))
             text, is_error = "%s: %s" % (type(e).__name__, e), True
-        reply(msg_id, {"content": [{"type": "text", "text": text}], "isError": is_error})
+        if isinstance(text, dict) and "image" in text:
+            content = [{"type": "image", "data": text["image"], "mimeType": text["mime"]}]
+        else:
+            content = [{"type": "text", "text": text}]
+        reply(msg_id, {"content": content, "isError": is_error})
         return
 
     if msg_id is not None:

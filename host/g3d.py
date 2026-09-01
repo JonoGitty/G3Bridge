@@ -21,17 +21,34 @@ replies -- that bug cost an afternoon once already.
 
 import os
 import socket
+import http.server
 import socketserver
 import sys
 import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import config  # noqa: E402
 import protocol  # noqa: E402
+import raster  # noqa: E402
 
-AGENT_PORT = 9990
-CONTROL_PORT = 9991
-REPLY_TIMEOUT = 15.0
+AGENT_PORT = config.AGENT_PORT
+CONTROL_PORT = config.CONTROL_PORT
+HTTP_PORT = config.HTTP_PORT
+REPLY_TIMEOUT = config.REPLY_TIMEOUT
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+RUN_DIR = os.path.join(HERE, "..", "run")
+BOOT_DIR = os.path.join(HERE, "..", "g3")
+FRAME_GIF = os.path.join(RUN_DIR, "frame.gif")
+FRAME_PNG = os.path.join(RUN_DIR, "frame.png")
+
+# Commands that mutate the picture. These are mirrored host-side so that the
+# Tier 0 browser display works even when no agent is installed on the Mac.
+DRAW_VERBS = frozenset((
+    "CLEAR", "PEN", "PENSIZE", "FONT", "MOVETO", "LINETO",
+    "LINE", "PIXEL", "RECT", "OVAL", "TEXT",
+))
 
 
 def log(msg):
@@ -168,6 +185,20 @@ class Link:
 
 
 LINK = Link()
+MIRROR = raster.Screen(config.CANVAS_W, config.CANVAS_H)
+FRAME_SEQ = [0]
+MIRROR_LOCK = threading.Lock()
+
+
+def present():
+    """Write the mirror out for the HTTP display to serve."""
+    if not os.path.isdir(RUN_DIR):
+        os.makedirs(RUN_DIR)
+    with MIRROR_LOCK:
+        FRAME_SEQ[0] += 1
+        MIRROR.save(FRAME_PNG)
+        if raster.HAVE_PIL:
+            MIRROR.save(FRAME_GIF)   # GIF: guaranteed to render in a 1999 browser
 
 
 class AgentHandler(socketserver.BaseRequestHandler):
@@ -218,6 +249,29 @@ class ControlHandler(socketserver.StreamRequestHandler):
                 self._reply("OK", seq, *["|".join(e) for e in LINK.drain_events()])
                 continue
 
+            # Draw into the host-side mirror regardless of whether the Mac
+            # is attached, so Tier 0 (browser as the display) works with
+            # nothing installed on the Mac.
+            mirrored = False
+            if verb in DRAW_VERBS:
+                try:
+                    with MIRROR_LOCK:
+                        MIRROR.apply(verb, args)
+                    mirrored = True
+                except Exception as e:
+                    self._reply("ERR", seq, "mirror rejected %s: %s" % (verb, e))
+                    continue
+            elif verb == "FLUSH":
+                present()
+                mirrored = True
+
+            if not LINK.alive:
+                if mirrored:
+                    self._reply("OK", seq, "mirror-only", "no-agent-attached")
+                else:
+                    self._reply("ERR", seq, "no G3 agent connected")
+                continue
+
             try:
                 rverb, rargs = LINK.send(verb, *args)
                 self._reply(rverb, seq, *rargs)
@@ -228,6 +282,116 @@ class ControlHandler(socketserver.StreamRequestHandler):
         self.wfile.write((protocol.encode(seq, verb, *args) + "\n").encode("ascii", "replace"))
 
 
+DISPLAY_PAGE = """<html><head><title>G3Bridge</title>
+<meta http-equiv="refresh" content="%(refresh)s">
+</head>
+<body bgcolor="#000000" text="#FFFFFF" link="#00CCFF" vlink="#00CCFF"
+      topmargin="0" leftmargin="0" marginwidth="0" marginheight="0">
+<center>
+<a href="/click"><img src="/f/%(seq)06d.%(ext)s" border="0" ismap
+     width="%(w)d" height="%(h)d" alt="G3Bridge display"></a>
+</center>
+</body></html>"""
+
+
+class DisplayHandler(http.server.BaseHTTPRequestHandler):
+    """Tier 0: the Mac's browser IS the display. Also serves the bootstrap files.
+
+    Deliberately HTML 3.2 -- meta refresh, ismap, table-free, no CSS, no
+    JavaScript -- because the client may be Netscape 4 or IE 5 on Mac OS 9.
+    """
+
+    server_version = "G3Bridge/0.1"
+    protocol_version = "HTTP/1.0"
+
+    def log_message(self, fmt, *a):
+        log("http %s" % (fmt % a))
+
+    def _send(self, code, ctype, body, extra=None):
+        if isinstance(body, str):
+            body = body.encode("ascii", "replace")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        # Netscape 4 and IE 4.5/5 cache aggressively and inconsistently. Send
+        # all three headers AND vary the URL (see the frame counter) -- either
+        # alone is not enough in practice.
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        query = self.path.split("?", 1)[1] if "?" in self.path else ""
+
+        if path in ("/", "/index.html"):
+            ext = "gif" if raster.HAVE_PIL and os.path.exists(FRAME_GIF) else "png"
+            self._send(200, "text/html", DISPLAY_PAGE % {
+                "refresh": "2", "ext": ext, "seq": FRAME_SEQ[0],
+                "w": MIRROR.w, "h": MIRROR.h})
+            return
+
+        # /f/000123.gif -- the counter only exists to defeat the cache; any
+        # value serves the current frame.
+        if path.startswith("/f/") or path in ("/frame.gif", "/frame.png"):
+            fn = FRAME_GIF if path.endswith("gif") else FRAME_PNG
+            if not os.path.exists(fn):
+                present()
+            try:
+                with open(fn, "rb") as f:
+                    body = f.read()
+            except OSError:
+                self._send(404, "text/plain", "no frame yet")
+                return
+            self._send(200, "image/gif" if fn.endswith("gif") else "image/png", body)
+            return
+
+        if path == "/click":
+            # ismap sends "?x,y"; turn it into an event for the host
+            xy = query.replace(",", " ").split()
+            if len(xy) == 2 and all(v.isdigit() for v in xy):
+                LINK.events.append(["CLICK", xy[0], xy[1]])
+                log("browser click at %s,%s" % (xy[0], xy[1]))
+            self.send_response(302)
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+
+        if path.startswith("/boot/"):
+            name = os.path.basename(path[len("/boot/"):])
+            fn = os.path.join(BOOT_DIR, name)
+            if not name or not os.path.isfile(fn):
+                self._send(404, "text/plain", "no such bootstrap file: %s" % name)
+                return
+            with open(fn, "rb") as f:
+                body = f.read()
+            # SimpleText and Script Editor want CR line endings. Do NOT do
+            # this to .py -- MacPython reads LF source fine and a botched
+            # conversion would break the agent.
+            if name.endswith((".txt", ".scpt")):
+                body = body.replace(b"\r\n", b"\n").replace(b"\n", b"\r")
+            self._send(200, "application/octet-stream", body,
+                       {"Content-Disposition": 'attachment; filename="%s"' % name})
+            return
+
+        if path == "/boot":
+            try:
+                names = sorted(os.listdir(BOOT_DIR))
+            except OSError:
+                names = []
+            items = "".join('<li><a href="/boot/%s">%s</a></li>' % (n, n) for n in names)
+            self._send(200, "text/html",
+                       "<html><body bgcolor=#FFFFFF><h2>G3Bridge bootstrap</h2>"
+                       "<ul>%s</ul></body></html>" % (items or "<li>(nothing yet)</li>"))
+            return
+
+        self._send(404, "text/plain", "not found")
+
+
 class Reusable(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
@@ -236,10 +400,16 @@ class Reusable(socketserver.ThreadingTCPServer):
 def main():
     agent_srv = Reusable(("0.0.0.0", AGENT_PORT), AgentHandler)
     control_srv = Reusable(("127.0.0.1", CONTROL_PORT), ControlHandler)
-    for name, srv in (("agent", agent_srv), ("control", control_srv)):
+    http_srv = Reusable(("0.0.0.0", HTTP_PORT), DisplayHandler)
+    present()
+    for name, srv in (("agent", agent_srv), ("control", control_srv), ("http", http_srv)):
         threading.Thread(target=srv.serve_forever, name=name, daemon=True).start()
 
-    log("listening: agent 0.0.0.0:%d  control 127.0.0.1:%d" % (AGENT_PORT, CONTROL_PORT))
+    log("listening: agent 0.0.0.0:%d  control 127.0.0.1:%d  http 0.0.0.0:%d"
+        % (AGENT_PORT, CONTROL_PORT, HTTP_PORT))
+    log("Tier 0 display for the Mac: http://%s:%d/  (or whatever address"
+        % (config.SUGGESTED_PC_IP, HTTP_PORT))
+    log("  tools/netcheck.py reports for the cable adapter)")
     log("waiting for the G3 to dial in")
     try:
         while True:
