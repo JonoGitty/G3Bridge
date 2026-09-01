@@ -231,7 +231,7 @@ def call_tool(name, args):
             return ("No G3 connected. The daemon is running and listening on :9990, "
                     "but the Mac has not dialled in.\n"
                     "Check: the Ethernet cable, the Mac's TCP/IP control panel "
-                    "(static IP 192.168.77.2, mask 255.255.255.0), and that the "
+                    "(static IP 192.168.11.2, mask 255.255.255.0), and that the "
                     "agent is running on the Mac."), False
         return ("G3 connected.\n" + "\n".join("  %s: %s" % kv for kv in sorted(info.items()))), False
 

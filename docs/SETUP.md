@@ -32,11 +32,10 @@ There is no DHCP on a direct cable, so both ends are set by hand.
 
 ## Cabling
 
-The iMac G3 almost certainly has no auto-MDI-X, so a direct PC-to-Mac run may
-need a **crossover** cable. A modern gigabit PC NIC will usually flip the pairs
-itself and make a straight cable work — but don't gamble first bring-up on it.
-Putting any cheap switch or the house router between the two removes the
-question entirely.
+**A straight-through cable is fine.** The PC's NIC is a Realtek Gaming 2.5GbE,
+and every 1000/2500BASE-T PHY implements auto-MDI-X, so it flips the pairs
+itself. The iMac G3 is far too old to do that, but it doesn't need to — one end
+doing it is enough. No crossover cable, no switch required.
 
 ## On the Mac
 

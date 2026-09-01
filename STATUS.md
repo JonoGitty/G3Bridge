@@ -14,7 +14,7 @@ receives them over Ethernet and renders them natively.
 
 ## Design decisions locked
 - **Transport = Ethernet/TCP, direct cable.** The iMac G3 has no serial/ADB/floppy; USB on OS 9 is awkward. Ethernet is built in.
-- **Static IPs, no DHCP.** A direct cable means nothing is handing out addresses. PC `192.168.77.1`, iMac `192.168.77.2`, mask `255.255.255.0`, no gateway.
+- **Static IPs, no DHCP.** A direct cable means nothing is handing out addresses. PC `192.168.11.10`, iMac `192.168.11.2`, mask `255.255.255.0`, no gateway.
 - **The daemon runs on WINDOWS Python (`C:\Python310`), not WSL.** WSL2 sits behind NAT, so a device on a direct cable cannot reach a listener inside it. The MCP server runs in WSL and reaches the daemon over loopback.
 - **G3 dials out to the host.** Avoids configuring inbound services on the Mac.
 - **No JSON on the G3 side.** Target runtime is old Python 2.x, which predates the `json` module. Line protocol parsed with `shlex` instead.

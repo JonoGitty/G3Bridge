@@ -13,6 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "host"))
 import config
+import isolation
 
 
 def out(ok, label, detail=""):
@@ -96,12 +97,35 @@ def main():
         print("        Router / Name server: leave BLANK")
         print("        Close the window, click Save.")
         print()
-        print("      If it still will not answer, the cable is the next suspect.")
-        print("      The iMac G3's Ethernet port probably has no auto-MDI-X, so a")
-        print("      direct PC-to-Mac link may need a CROSSOVER cable. Putting any")
-        print("      cheap switch or your router between the two removes the doubt.")
+        print("      A plain straight-through cable is fine here: this PC's NIC is")
+        print("      2.5GbE, and every 1000/2500BASE-T PHY does auto-MDI-X, so it")
+        print("      flips the pairs itself. You do not need a crossover cable.")
+        print("      Check instead: is the Mac powered on, is the agent or browser")
+        print("      running, and do the link lights show at both ends?")
 
-    if reachable and ready:
+    print()
+    print("ISOLATION -- can the Mac get to the internet through this PC?")
+    print()
+    passed, failed, unknown = isolation.report()
+
+    print()
+    if failed:
+        print("  %d control(s) FAILED. The Mac could reach the internet through this" % failed)
+        print("  PC if it had a gateway set. Fix the above before connecting it.")
+    elif unknown:
+        print("  %d control(s) could not be checked. Treat isolation as unconfirmed." % unknown)
+    else:
+        print("  All %d Windows-side controls pass: this PC will not route the Mac's" % passed)
+        print("  traffic anywhere.")
+    print()
+    print("  The other half is ON THE MAC and cannot be checked from here:")
+    print("    TCP/IP control panel must have Router and Name Server BLANK.")
+    print("    With no default route the Mac cannot address anything off")
+    print("    %s." % (config.SUGGESTED_G3_IP.rsplit(".", 1)[0] + ".0/24"))
+    print("    Also switch off Remote Access auto-dial so the internal modem")
+    print("    never picks up the line. See docs/ISOLATION.md.")
+
+    if reachable and ready and not failed:
         print("\n  Link looks good. Next: run the agent on the Mac.")
     return 0
 

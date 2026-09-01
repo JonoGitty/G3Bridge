@@ -86,8 +86,9 @@ IF IT WILL NOT CONNECT
 Run tools\netcheck.py on the PC - it checks each link in the chain and tells
 you which one is broken.
 
-The most likely culprit on a direct PC-to-Mac cable is the cable itself. The
-iMac G3's Ethernet port probably cannot flip the wires for you, so a direct
-link may need a CROSSOVER cable. Putting any cheap network switch, or your
-home router, between the two machines removes the question entirely and is
-the recommended way to do it.
+A plain straight-through cable is fine. The PC has a 2.5-gigabit Ethernet
+port, and every gigabit-or-faster port flips the wires itself, so you do not
+need a crossover cable even though the iMac is far too old to do that trick.
+
+Check instead: is the Mac's TCP/IP control panel set as above, and do the
+link lights come on at both ends of the cable?
