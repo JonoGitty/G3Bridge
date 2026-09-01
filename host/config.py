@@ -17,6 +17,25 @@ SUGGESTED_PC_IP = "192.168.11.10"
 SUGGESTED_G3_IP = "192.168.11.2"
 SUGGESTED_MASK = "255.255.255.0"
 
+# --- isolation -------------------------------------------------------------
+# The G3 is a 1999 machine with no security patches. It must only ever see this
+# PC. Two halves to that:
+#   outbound  the Mac has no gateway and no DNS, so it cannot route off-subnet
+#   inbound   we bind our listeners to the CABLE adapter only, so the rest of
+#             the house LAN cannot reach the bridge either
+# Set BIND_TO_CABLE_ONLY = False only for local testing with no Mac attached.
+BIND_TO_CABLE_ONLY = True
+LOOPBACK_ALWAYS_OK = True     # keep 127.0.0.1 usable for the test harness
+
+# Only accept an agent connection from this address. None = accept any.
+ALLOWED_G3_IP = SUGGESTED_G3_IP
+
+# --- file transfer ---------------------------------------------------------
+# Two drop folders. Nothing is executed, only stored and served.
+TO_MAC_DIR = "transfer/to-mac"       # PC -> Mac. Served over HTTP.
+FROM_MAC_DIR = "transfer/from-mac"   # Mac -> PC. Written by uploads.
+MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+
 # Mac OS 9 is cooperatively multitasked. If the agent window goes behind
 # another app its socket stalls until it comes back. Do not read a stall as
 # a dead peer.

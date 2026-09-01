@@ -56,7 +56,7 @@ def main():
     r = rpc("tools/list", {}, 2)
     tools = r.get("result", {}).get("tools", [])
     names = sorted(t["name"] for t in tools)
-    check("lists the 5 tools", len(tools) == 5, str(names))
+    check("lists the 8 tools", len(tools) == 8, str(names))
     check("every tool has a schema", all("inputSchema" in t for t in tools))
     check("g3_draw documents the grammar",
           any("PENSIZE" in t["description"] for t in tools if t["name"] == "g3_draw"))
@@ -83,6 +83,24 @@ def main():
     print("      -> " + text.replace("\n", "\n         "))
     check("g3_draw reports success", res.get("isError") is False, "isError=%s" % res.get("isError"))
     check("g3_draw auto-appended FLUSH", "FLUSH" in text)
+
+    print("tools/call g3_transfers")
+    r = rpc("tools/call", {"name": "g3_transfers", "arguments": {}}, 50)
+    text = r.get("result", {}).get("content", [{}])[0].get("text", "")
+    print("      -> " + text.replace("\n", "\n         "))
+    check("g3_transfers lists both directions",
+          "Waiting for the Mac" in text and "Sent up by the Mac" in text)
+
+    print("tools/call g3_send_file")
+    r = rpc("tools/call", {"name": "g3_send_file",
+                           "arguments": {"path": SERVER, "rename": "staged_test.txt"}}, 51)
+    res = r.get("result", {})
+    print("      -> " + res.get("content", [{}])[0].get("text", "").replace("\n", "\n         "))
+    check("g3_send_file stages a file", res.get("isError") is False)
+
+    print("tools/call g3_send_file with a bad path")
+    r = rpc("tools/call", {"name": "g3_send_file", "arguments": {"path": "Z:/nope.txt"}}, 52)
+    check("missing file is an error", r.get("result", {}).get("isError") is True)
 
     print("unknown tool is an error, not a crash")
     r = rpc("tools/call", {"name": "g3_nope", "arguments": {}}, 6)

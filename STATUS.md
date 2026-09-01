@@ -8,7 +8,7 @@ receives them over Ethernet and renders them natively.
 
 ## Open questions (blocking exact G3-side steps)
 - [ ] Exact machine: iMac G3 model (tray-load / slot-load) — decides ports available
-- [ ] Exact OS version — "9.7" is not a real Mac OS release (real: 9.0, 9.0.4, 9.1, 9.2.1, 9.2.2)
+- [x] ~~Exact OS version~~ **Mac OS 9.2** (Jono, 1 Sep). Not "9.7" — that release never existed.
 - [x] ~~Is the G3 on the same LAN?~~ **DIRECT ETHERNET CABLE, PC <-> iMac, no router** (Jono, 1 Sep)
 - [ ] What is already installed on it? (browser version, any dev tools, StuffIt)
 
@@ -62,9 +62,12 @@ receives them over Ethernet and renders them natively.
 - **Nothing has touched the real machine yet.** The Carbon calls in `g3agent.py`
   follow verified API shapes but are unrun. `g3agent.py selftest` draws with no
   network, which is the right first test.
-- **Which iMac G3 and which OS version.** "9.7" is not a real release. If it is
-  9.0.x the bundled browser is IE 4.5 (no PNG at all - hence GIF everywhere) and
-  CarbonLib may be below MacPython's 1.3 floor.
+- ~~Which OS version~~ **RESOLVED: 9.2.** This clears two risks: 9.2.x ships
+  Internet Explorer 5, so PNG would work (we still send GIF, which costs nothing
+  and is unconditionally safe), and 9.2 supports CarbonLib 1.6, comfortably above
+  MacPython 2.3's 1.3 floor — so the Tier 1 agent should install cleanly.
+  Which iMac G3 revision it is remains unknown, but nothing in the design depends
+  on it: every iMac G3 has built-in 10/100 Ethernet.
 - **Cable type.** The iMac G3 likely has no auto-MDI-X. A modern gigabit NIC
   usually compensates, but a switch between the two removes the doubt.
 - **Frame rate on Tier 0** is estimated at 1-3 fps, not measured.

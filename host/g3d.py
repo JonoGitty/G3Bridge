@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config  # noqa: E402
 import protocol  # noqa: E402
 import raster  # noqa: E402
+import xfer  # noqa: E402
 
 AGENT_PORT = config.AGENT_PORT
 CONTROL_PORT = config.CONTROL_PORT
@@ -42,6 +43,8 @@ RUN_DIR = os.path.join(HERE, "..", "run")
 BOOT_DIR = os.path.join(HERE, "..", "g3")
 FRAME_GIF = os.path.join(RUN_DIR, "frame.gif")
 FRAME_PNG = os.path.join(RUN_DIR, "frame.png")
+TO_MAC = os.path.join(HERE, "..", config.TO_MAC_DIR)
+FROM_MAC = os.path.join(HERE, "..", config.FROM_MAC_DIR)
 
 # Commands that mutate the picture. These are mirrored host-side so that the
 # Tier 0 browser display works even when no agent is installed on the Mac.
@@ -49,6 +52,42 @@ DRAW_VERBS = frozenset((
     "CLEAR", "PEN", "PENSIZE", "FONT", "MOVETO", "LINETO",
     "LINE", "PIXEL", "RECT", "OVAL", "TEXT",
 ))
+
+
+def local_ipv4():
+    found = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            found.add(info[4][0])
+    except socket.gaierror:
+        pass
+    return found
+
+
+def bind_addresses():
+    """Which addresses to listen on.
+
+    The G3 must only ever be able to reach this PC, and the rest of the house
+    LAN must not be able to reach the bridge. So we bind the CABLE adapter
+    specifically rather than 0.0.0.0, plus loopback so the test harness and the
+    MCP server still work.
+    """
+    if not config.BIND_TO_CABLE_ONLY:
+        return ["0.0.0.0"]
+    addrs = local_ipv4()
+    if config.SUGGESTED_PC_IP in addrs:
+        return [config.SUGGESTED_PC_IP, "127.0.0.1"]
+    return ["127.0.0.1"]
+
+
+def peer_allowed(addr):
+    """True if this address may drive the display."""
+    ip = addr[0]
+    if ip == "127.0.0.1":
+        return True                       # the simulator and local tests
+    if config.ALLOWED_G3_IP is None:
+        return True
+    return ip == config.ALLOWED_G3_IP
 
 
 def log(msg):
@@ -206,6 +245,14 @@ class AgentHandler(socketserver.BaseRequestHandler):
 
     def handle(self):
         sock = self.request
+        if not peer_allowed(self.client_address):
+            log("REFUSED agent connection from %s:%d (expected %s)"
+                % (self.client_address[0], self.client_address[1], config.ALLOWED_G3_IP))
+            try:
+                sock.sendall(b"0 ERR 403 \"not the expected machine\"\n")
+            except OSError:
+                pass
+            return
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         LINK.attach(sock, self.client_address)
         buf = b""
@@ -294,6 +341,21 @@ DISPLAY_PAGE = """<html><head><title>G3Bridge</title>
 </body></html>"""
 
 
+UPLOAD_PAGE = """<html><head><title>Send a file to the PC</title></head>
+<body bgcolor="#FFFFFF">
+<h2>Send a file to the PC</h2>
+<form action="/upload" method="POST" enctype="multipart/form-data">
+<p>Choose a file on this Mac:</p>
+<p><input type="file" name="f"></p>
+<p><input type="submit" value="Send to the PC"></p>
+</form>
+<p><font size="-1">Only the data fork is sent. Applications, fonts and anything
+whose contents live in a resource fork will arrive incomplete &mdash; put those
+in a StuffIt archive first.</font></p>
+<p><a href="/menu">Back</a></p>
+</body></html>"""
+
+
 class DisplayHandler(http.server.BaseHTTPRequestHandler):
     """Tier 0: the Mac's browser IS the display. Also serves the bootstrap files.
 
@@ -378,6 +440,49 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
                        {"Content-Disposition": 'attachment; filename="%s"' % name})
             return
 
+        if path == "/menu":
+            self._send(200, "text/html",
+                "<html><head><title>G3Bridge</title></head>"
+                "<body bgcolor=#FFFFFF><h2>G3Bridge</h2><ul>"
+                "<li><a href=\"/\">Display</a> &mdash; what Claude is drawing</li>"
+                "<li><a href=\"/files\">Files from the PC</a> &mdash; download to this Mac</li>"
+                "<li><a href=\"/upload\">Send a file to the PC</a></li>"
+                "<li><a href=\"/boot\">Bootstrap</a> &mdash; the agent and its instructions</li>"
+                "</ul></body></html>")
+            return
+
+        if path == "/files":
+            rows = xfer.listing(TO_MAC)
+            if rows:
+                items = "".join(
+                    '<li><a href="/files/%s">%s</a> &nbsp; <font size=-1>%s &mdash; %s</font></li>'
+                    % (n, n, xfer.human(sz), note) for n, sz, note in rows)
+            else:
+                items = "<li>(nothing staged)</li>"
+            self._send(200, "text/html",
+                "<html><head><title>Files from the PC</title></head><body bgcolor=#FFFFFF>"
+                "<h2>Files from the PC</h2><ul>%s</ul>"
+                "<p><a href=\"/menu\">Back</a></p></body></html>" % items)
+            return
+
+        if path.startswith("/files/"):
+            name = xfer.safe_name(path[len("/files/"):])
+            fn = os.path.join(TO_MAC, name)
+            if not name or not os.path.isfile(fn):
+                self._send(404, "text/plain", "no such file: %s" % name)
+                return
+            with open(fn, "rb") as f:
+                body = f.read()
+            body, note = xfer.to_mac_bytes(name, body)
+            log("sent %s to the Mac (%s)" % (name, note))
+            self._send(200, "application/octet-stream", body,
+                       {"Content-Disposition": 'attachment; filename="%s"' % name})
+            return
+
+        if path == "/upload":
+            self._send(200, "text/html", UPLOAD_PAGE)
+            return
+
         if path == "/boot":
             try:
                 names = sorted(os.listdir(BOOT_DIR))
@@ -391,6 +496,56 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
 
         self._send(404, "text/plain", "not found")
 
+    def do_POST(self):
+        if self.path.split("?", 1)[0] != "/upload":
+            self._send(404, "text/plain", "not found")
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0:
+            self._result("Nothing arrived. The browser sent no data.")
+            return
+        if length > config.MAX_UPLOAD_BYTES:
+            self._result("Too big: %s. Limit is %s."
+                         % (xfer.human(length), xfer.human(config.MAX_UPLOAD_BYTES)))
+            return
+        body = self.rfile.read(length)
+        try:
+            files = xfer.parse_multipart(body, self.headers.get("Content-Type"),
+                                         config.MAX_UPLOAD_BYTES)
+        except ValueError as e:
+            self._result("Could not read the upload: %s" % e)
+            return
+        if not files:
+            self._result("No file was chosen.")
+            return
+
+        if not os.path.isdir(FROM_MAC):
+            os.makedirs(FROM_MAC)
+        saved = []
+        for name, data in files:
+            data, note = xfer.from_mac_bytes(name, data)
+            dest = os.path.join(FROM_MAC, name)
+            with open(dest, "wb") as f:
+                f.write(data)
+            saved.append((name, len(data), note))
+            log("received %s from the Mac, %s%s"
+                % (name, xfer.human(len(data)), (" (%s)" % note) if note else ""))
+        rows = "".join("<li>%s &mdash; %s%s</li>"
+                       % (n, xfer.human(sz), (" &mdash; " + note) if note else "")
+                       for n, sz, note in saved)
+        self._result("<b>Received:</b><ul>%s</ul>"
+                     "<p>They are in <tt>transfer\\from-mac\\</tt> on the PC.</p>" % rows)
+
+    def _result(self, html):
+        self._send(200, "text/html",
+                   "<html><head><title>Upload</title></head><body bgcolor=#FFFFFF>"
+                   "<h2>Send a file to the PC</h2>%s"
+                   "<p><a href=\"/upload\">Send another</a> &nbsp; "
+                   "<a href=\"/menu\">Back</a></p></body></html>" % html)
+
 
 class Reusable(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
@@ -398,15 +553,31 @@ class Reusable(socketserver.ThreadingTCPServer):
 
 
 def main():
-    agent_srv = Reusable(("0.0.0.0", AGENT_PORT), AgentHandler)
-    control_srv = Reusable(("127.0.0.1", CONTROL_PORT), ControlHandler)
-    http_srv = Reusable(("0.0.0.0", HTTP_PORT), DisplayHandler)
+    for d in (RUN_DIR, TO_MAC, FROM_MAC):
+        if not os.path.isdir(d):
+            os.makedirs(d)
+
+    binds = bind_addresses()
+    servers = []
+    for addr in binds:
+        servers.append(("agent@%s" % addr, Reusable((addr, AGENT_PORT), AgentHandler)))
+        servers.append(("http@%s" % addr, Reusable((addr, HTTP_PORT), DisplayHandler)))
+    servers.append(("control", Reusable(("127.0.0.1", CONTROL_PORT), ControlHandler)))
+
     present()
-    for name, srv in (("agent", agent_srv), ("control", control_srv), ("http", http_srv)):
+    for name, srv in servers:
         threading.Thread(target=srv.serve_forever, name=name, daemon=True).start()
 
-    log("listening: agent 0.0.0.0:%d  control 127.0.0.1:%d  http 0.0.0.0:%d"
-        % (AGENT_PORT, CONTROL_PORT, HTTP_PORT))
+    log("listening on %s -- agent :%d, http :%d; control 127.0.0.1:%d"
+        % (", ".join(binds), AGENT_PORT, HTTP_PORT, CONTROL_PORT))
+    if config.SUGGESTED_PC_IP not in binds:
+        log("NOTE: the cable adapter (%s) is not up yet, so nothing is exposed"
+            % config.SUGGESTED_PC_IP)
+        log("      beyond loopback. Set the static IP and restart to reach the Mac.")
+    else:
+        log("bound to the cable adapter only -- the WiFi LAN cannot reach the bridge")
+    if config.ALLOWED_G3_IP:
+        log("only %s may drive the display" % config.ALLOWED_G3_IP)
     log("Tier 0 display for the Mac: http://%s:%d/  (or whatever address"
         % (config.SUGGESTED_PC_IP, HTTP_PORT))
     log("  tools/netcheck.py reports for the cable adapter)")

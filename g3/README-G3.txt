@@ -44,9 +44,9 @@ TIER 1 - REAL QUICKDRAW, NEEDS MACPYTHON
 This draws with the Mac's own graphics calls instead of showing a picture of
 them. Sharper, faster, and it can talk back.
 
-1. Check you have CarbonLib 1.3 or newer:
-   Apple menu > About This Computer, or look in the Extensions folder.
-   CarbonLib 1.6 needs Mac OS 9.1 or later.
+1. CarbonLib: Mac OS 9.2 supports CarbonLib 1.6, which is well above what
+   MacPython needs, so this should be fine. Check in the Extensions folder
+   if the installer complains.
 
 2. Get MacPython for Mac OS 9. Version 2.3.5 is the last one ever made.
    The original host (ftp.cwi.nl) is off the air. Use Macintosh Garden or
