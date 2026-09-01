@@ -31,6 +31,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config  # noqa: E402
 import devices  # noqa: E402
+import news  # noqa: E402
+import pages  # noqa: E402
 import protocol  # noqa: E402
 import raster  # noqa: E402
 import xfer  # noqa: E402
@@ -43,6 +45,8 @@ REPLY_TIMEOUT = config.REPLY_TIMEOUT
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN_DIR = os.path.join(HERE, "..", "run")
 BOOT_DIR = os.path.join(HERE, "..", "g3")
+WWW_DIR = os.path.join(HERE, "..", "www")
+GAMES_DIR = os.path.join(WWW_DIR, "games")
 TO_MAC = os.path.join(HERE, "..", config.TO_MAC_DIR)
 FROM_MAC = os.path.join(HERE, "..", config.FROM_MAC_DIR)
 
@@ -704,7 +708,11 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
 
     def _send(self, code, ctype, body, extra=None, cacheable=False):
         if isinstance(body, str):
-            body = body.encode("ascii", "replace")
+            # UTF-8, not ascii-replace: news headlines are full of curly quotes,
+            # dashes and accents that would otherwise arrive as "?".
+            body = body.encode("utf-8", "replace")
+            if ctype.startswith("text/") and "charset" not in ctype:
+                ctype += "; charset=utf-8"
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -742,6 +750,30 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path in ("/", "/index.html"):
+            self._send(200, "text/html",
+                       pages.index_page(dev, pages.scan_games(GAMES_DIR),
+                                        any(x[2] for x in news.sections())))
+            return
+
+        if path == "/news":
+            self._send(200, "text/html", pages.news_page(news.sections(), news.ago))
+            return
+
+        if path == "/games":
+            self._send(200, "text/html", pages.games_page(pages.scan_games(GAMES_DIR)))
+            return
+
+        if path.startswith("/games/"):
+            name = os.path.basename(path[len("/games/"):])
+            fn = os.path.join(GAMES_DIR, name)
+            if not name.endswith(".html") or not os.path.isfile(fn):
+                self._send(404, "text/plain", "no such game: %s" % name)
+                return
+            with open(fn, "rb") as f:
+                self._send(200, "text/html", f.read())
+            return
+
+        if path in ("/display", "/display.html"):
             ext = "gif" if raster.HAVE_PIL and os.path.exists(dev.frame_path("gif")) else "png"
             if dev.frame_seq == 0:
                 dev.present()
@@ -773,7 +805,7 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
                 dev.link.events.append(["CLICK", xy[0], xy[1]])
                 log("browser click on %s at %s,%s" % (dev.name, xy[0], xy[1]))
             self.send_response(302)
-            self.send_header("Location", "/")
+            self.send_header("Location", "/display")
             self.end_headers()
             return
 
@@ -1072,6 +1104,7 @@ def main():
         servers.append(("http@%s" % addr, Reusable((addr, HTTP_PORT), DisplayHandler)))
     servers.append(("control", Reusable(("127.0.0.1", CONTROL_PORT), ControlHandler)))
 
+    news.start_background()
     present_all()
     for name, srv in servers:
         threading.Thread(target=srv.serve_forever, name=name, daemon=True).start()
