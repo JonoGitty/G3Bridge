@@ -30,6 +30,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config  # noqa: E402
+import devices  # noqa: E402
 import protocol  # noqa: E402
 import raster  # noqa: E402
 import xfer  # noqa: E402
@@ -42,8 +43,6 @@ REPLY_TIMEOUT = config.REPLY_TIMEOUT
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN_DIR = os.path.join(HERE, "..", "run")
 BOOT_DIR = os.path.join(HERE, "..", "g3")
-FRAME_GIF = os.path.join(RUN_DIR, "frame.gif")
-FRAME_PNG = os.path.join(RUN_DIR, "frame.png")
 TO_MAC = os.path.join(HERE, "..", config.TO_MAC_DIR)
 FROM_MAC = os.path.join(HERE, "..", config.FROM_MAC_DIR)
 
@@ -68,27 +67,23 @@ def local_ipv4():
 def bind_addresses():
     """Which addresses to listen on.
 
-    The G3 must only ever be able to reach this PC, and the rest of the house
-    LAN must not be able to reach the bridge. So we bind the CABLE adapter
-    specifically rather than 0.0.0.0, plus loopback so the test harness and the
-    MCP server still work.
+    Preference is to bind the cable adapter specifically, so the house WiFi LAN
+    cannot even see the bridge. But that address DISAPPEARS while the vintage
+    machine is switched off -- Windows drops it when the link goes down -- and
+    binding loopback-only then would mean restarting the daemon every time the
+    Mac is powered on. That is a worse failure than a listening port.
+
+    So: bind the cable address when it exists, otherwise fall back to all
+    interfaces. Either way the real control is the allowlist -- every inbound
+    connection, agent socket and HTTP alike, is matched against config.DEVICES
+    by IP and refused if it is not a known machine.
     """
     if not config.BIND_TO_CABLE_ONLY:
         return ["0.0.0.0"]
     addrs = local_ipv4()
     if config.SUGGESTED_PC_IP in addrs:
         return [config.SUGGESTED_PC_IP, "127.0.0.1"]
-    return ["127.0.0.1"]
-
-
-def peer_allowed(addr):
-    """True if this address may drive the display."""
-    ip = addr[0]
-    if ip == "127.0.0.1":
-        return True                       # the simulator and local tests
-    if config.ALLOWED_G3_IP is None:
-        return True
-    return ip == config.ALLOWED_G3_IP
+    return ["0.0.0.0"]
 
 
 def log(msg):
@@ -296,22 +291,15 @@ class CommandQueue:
             return ["applet=%s" % state, "polls=%d" % self.polls, "last_poll=%s" % age]
 
 
-QUEUE = CommandQueue()
-LINK = Link()
-MIRROR = raster.Screen(config.CANVAS_W, config.CANVAS_H)
-FRAME_SEQ = [0]
-MIRROR_LOCK = threading.Lock()
+REGISTRY = devices.Registry()
+for _d in REGISTRY:
+    _d.link = Link()
+    _d.queue = CommandQueue()
 
 
-def present():
-    """Write the mirror out for the HTTP display to serve."""
-    if not os.path.isdir(RUN_DIR):
-        os.makedirs(RUN_DIR)
-    with MIRROR_LOCK:
-        FRAME_SEQ[0] += 1
-        MIRROR.save(FRAME_PNG)
-        if raster.HAVE_PIL:
-            MIRROR.save(FRAME_GIF)   # GIF: guaranteed to render in a 1999 browser
+def present_all():
+    for d in REGISTRY:
+        d.present()
 
 
 class AgentHandler(socketserver.BaseRequestHandler):
@@ -319,16 +307,20 @@ class AgentHandler(socketserver.BaseRequestHandler):
 
     def handle(self):
         sock = self.request
-        if not peer_allowed(self.client_address):
-            log("REFUSED agent connection from %s:%d (expected %s)"
-                % (self.client_address[0], self.client_address[1], config.ALLOWED_G3_IP))
+        dev = REGISTRY.for_peer(self.client_address[0])
+        if dev is None:
+            log("REFUSED agent connection from %s:%d -- not a known machine (%s)"
+                % (self.client_address[0], self.client_address[1],
+                   ", ".join("%s=%s" % (d.name, d.ip) for d in REGISTRY)))
             try:
-                sock.sendall(b"0 ERR 403 \"not the expected machine\"\n")
+                sock.sendall(b"0 ERR 403 \"not a known machine\"\n")
             except OSError:
                 pass
             return
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        LINK.attach(sock, self.client_address)
+        dev.touch()
+        log("agent for '%s' connecting" % dev.name)
+        dev.link.attach(sock, self.client_address)
         buf = b""
         try:
             while True:
@@ -343,15 +335,16 @@ class AgentHandler(socketserver.BaseRequestHandler):
                     raw, buf = buf.split(b"\n", 1)
                     text = raw.decode("ascii", "replace").strip()
                     if text:
-                        LINK.dispatch(text)
+                        dev.link.dispatch(text)
         finally:
-            LINK.detach(sock)
+            dev.link.detach(sock)
 
 
 class ControlHandler(socketserver.StreamRequestHandler):
     """Local-only. The MCP server speaks the same line protocol to us."""
 
     def handle(self):
+        dev = REGISTRY.resolve(None)
         for raw in self.rfile:
             line = raw.decode("ascii", "replace").strip()
             if not line:
@@ -363,8 +356,31 @@ class ControlHandler(socketserver.StreamRequestHandler):
                 continue
             seq = seq or 0
 
+            # USE <name> picks which machine the rest of this connection is
+            # talking to. Without it, the bridge picks the only machine that
+            # has been seen, or the configured default.
+            if verb == "USE":
+                target = REGISTRY.by_name(args[0]) if args else None
+                if target is None:
+                    self._reply("ERR", seq, "unknown device %r; known: %s"
+                                % (args[0] if args else "", ", ".join(REGISTRY.names())))
+                    continue
+                dev = target
+                self._reply("OK", seq, "device=%s" % dev.name)
+                continue
+
+            if verb == "DEVICES":
+                out = []
+                for d in REGISTRY:
+                    out.append("%s|%s|%dx%d|%s|%s" % (
+                        d.name, d.ip, d.canvas[0], d.canvas[1], d.os,
+                        "connected" if (d.link and d.link.alive) else
+                        ("seen" if d.last_seen else "never")))
+                self._reply("OK", seq, *out)
+                continue
+
             if verb == "STATUS":
-                self._reply("OK", seq, *LINK.status())
+                self._reply("OK", seq, *(dev.describe() + dev.link.status()))
                 continue
             if verb == "APPLESCRIPT":
                 try:
@@ -374,7 +390,7 @@ class ControlHandler(socketserver.StreamRequestHandler):
                     self._reply("ERR", seq, "bad APPLESCRIPT request: %s" % e)
                     continue
                 try:
-                    out = QUEUE.submit(body, timeout)
+                    out = dev.queue.submit(body, timeout)
                 except IOError as e:
                     self._reply("ERR", seq, str(e))
                     continue
@@ -383,11 +399,11 @@ class ControlHandler(socketserver.StreamRequestHandler):
                 continue
 
             if verb == "APPLETSTATUS":
-                self._reply("OK", seq, *QUEUE.status())
+                self._reply("OK", seq, *dev.queue.status())
                 continue
 
             if verb == "EVENTS":
-                self._reply("OK", seq, *["|".join(e) for e in LINK.drain_events()])
+                self._reply("OK", seq, *["|".join(e) for e in dev.link.drain_events()])
                 continue
 
             # Draw into the host-side mirror regardless of whether the Mac
@@ -396,25 +412,26 @@ class ControlHandler(socketserver.StreamRequestHandler):
             mirrored = False
             if verb in DRAW_VERBS:
                 try:
-                    with MIRROR_LOCK:
-                        MIRROR.apply(verb, args)
+                    with dev.mirror_lock:
+                        dev.mirror.apply(verb, args)
                     mirrored = True
                 except Exception as e:
                     self._reply("ERR", seq, "mirror rejected %s: %s" % (verb, e))
                     continue
             elif verb == "FLUSH":
-                present()
+                dev.present()
                 mirrored = True
 
-            if not LINK.alive:
+            if not dev.link.alive:
                 if mirrored:
-                    self._reply("OK", seq, "mirror-only", "no-agent-attached")
+                    self._reply("OK", seq, "mirror-only", "no-agent-attached",
+                                "device=%s" % dev.name)
                 else:
                     self._reply("ERR", seq, "no G3 agent connected")
                 continue
 
             try:
-                rverb, rargs = LINK.send(verb, *args)
+                rverb, rargs = dev.link.send(verb, *args)
                 self._reply(rverb, seq, *rargs)
             except IOError as e:
                 self._reply("ERR", seq, str(e))
@@ -487,23 +504,36 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _device(self):
+        d = REGISTRY.for_peer(self.client_address[0])
+        if d is not None:
+            d.touch()
+        return d
+
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         query = self.path.split("?", 1)[1] if "?" in self.path else ""
+        dev = self._device()
+        if dev is None:
+            self._send(403, "text/plain",
+                       "This bridge only serves the machines it knows about.")
+            return
 
         if path in ("/", "/index.html"):
-            ext = "gif" if raster.HAVE_PIL and os.path.exists(FRAME_GIF) else "png"
+            ext = "gif" if raster.HAVE_PIL and os.path.exists(dev.frame_path("gif")) else "png"
+            if dev.frame_seq == 0:
+                dev.present()
             self._send(200, "text/html", DISPLAY_PAGE % {
-                "refresh": str(config.REFRESH_SECONDS), "ext": ext, "seq": FRAME_SEQ[0],
-                "w": MIRROR.w, "h": MIRROR.h})
+                "refresh": str(config.REFRESH_SECONDS), "ext": ext, "seq": dev.frame_seq,
+                "w": dev.mirror.w, "h": dev.mirror.h})
             return
 
         # /f/000123.gif -- the counter only exists to defeat the cache; any
         # value serves the current frame.
         if path.startswith("/f/") or path in ("/frame.gif", "/frame.png"):
-            fn = FRAME_GIF if path.endswith("gif") else FRAME_PNG
+            fn = dev.frame_path("gif" if path.endswith("gif") else "png")
             if not os.path.exists(fn):
-                present()
+                dev.present()
             try:
                 with open(fn, "rb") as f:
                     body = f.read()
@@ -518,8 +548,8 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             # ismap sends "?x,y"; turn it into an event for the host
             xy = query.replace(",", " ").split()
             if len(xy) == 2 and all(v.isdigit() for v in xy):
-                LINK.events.append(["CLICK", xy[0], xy[1]])
-                log("browser click at %s,%s" % (xy[0], xy[1]))
+                dev.link.events.append(["CLICK", xy[0], xy[1]])
+                log("browser click on %s at %s,%s" % (dev.name, xy[0], xy[1]))
             self.send_response(302)
             self.send_header("Location", "/")
             self.end_headers()
@@ -582,7 +612,7 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path == "/cmd":
-            script = QUEUE.collect()
+            script = dev.queue.collect()
             if script is None:
                 # Empty body is the applet's "nothing to do" signal.
                 self._send(200, "text/plain", "")
@@ -603,7 +633,7 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             for pair in query.split("&"):
                 if pair.startswith("out="):
                     out = unquote_plus(pair[4:])
-            ok = QUEUE.deliver(out)
+            ok = dev.queue.deliver(out)
             self._send(200, "text/plain", "ok" if ok else "nothing was outstanding")
             return
 
@@ -628,6 +658,10 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
         self.do_POST()
 
     def do_POST(self):
+        dev = self._device()
+        if dev is None:
+            self._send(403, "text/plain", "unknown machine")
+            return
         if self.path.split("?", 1)[0] == "/result":
             # Accept whatever the applet sends -- raw text, a PUT body, or a
             # multipart part. We do not control what URL Access Scripting
@@ -646,7 +680,7 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
                 except ValueError:
                     pass
             text = raw.decode("mac-roman", "replace").replace("\r\n", "\n").replace("\r", "\n")
-            ok = QUEUE.deliver(text)
+            ok = dev.queue.deliver(text)
             log("result from the Mac: %d chars%s"
                 % (len(text), "" if ok else " (nothing was outstanding)"))
             self._send(200, "text/plain", "ok" if ok else "nothing was outstanding")
@@ -719,20 +753,22 @@ def main():
         servers.append(("http@%s" % addr, Reusable((addr, HTTP_PORT), DisplayHandler)))
     servers.append(("control", Reusable(("127.0.0.1", CONTROL_PORT), ControlHandler)))
 
-    present()
+    present_all()
     for name, srv in servers:
         threading.Thread(target=srv.serve_forever, name=name, daemon=True).start()
 
     log("listening on %s -- agent :%d, http :%d; control 127.0.0.1:%d"
         % (", ".join(binds), AGENT_PORT, HTTP_PORT, CONTROL_PORT))
     if config.SUGGESTED_PC_IP not in binds:
-        log("NOTE: the cable adapter (%s) is not up yet, so nothing is exposed"
+        log("NOTE: the cable adapter (%s) is down, probably because the Mac is off."
             % config.SUGGESTED_PC_IP)
-        log("      beyond loopback. Set the static IP and restart to reach the Mac.")
+        log("      Listening on all interfaces so it works the moment you switch on.")
+        log("      Only the addresses below are accepted; everything else gets 403.")
     else:
         log("bound to the cable adapter only -- the WiFi LAN cannot reach the bridge")
-    if config.ALLOWED_G3_IP:
-        log("only %s may drive the display" % config.ALLOWED_G3_IP)
+    for d in REGISTRY:
+        log("  device '%s'  %-15s %dx%d  %s" % (d.name, d.ip, d.canvas[0], d.canvas[1], d.label))
+    log("only those addresses may connect")
     log("Tier 0 display for the Mac: http://%s:%d/  (or whatever address"
         % (config.SUGGESTED_PC_IP, HTTP_PORT))
     log("  tools/netcheck.py reports for the cable adapter)")

@@ -1,5 +1,11 @@
 # G3Bridge — Status
 
+## The machines
+| name | address | screen | OS | state |
+|---|---|---|---|---|
+| `g3` | 192.168.11.2 | 800x600 | Mac OS 9.2 | **thermal fault** — will not start when warm, boots after ~1h cooling. Pre-existing. |
+| `emac` | 192.168.11.3 | 1024x768 | unknown | not yet connected; OS 9 vs OS X decides the control path |
+
 Created 2026-09-01.
 
 ## Goal

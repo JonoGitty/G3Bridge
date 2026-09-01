@@ -27,8 +27,28 @@ SUGGESTED_MASK = "255.255.255.0"
 BIND_TO_CABLE_ONLY = True
 LOOPBACK_ALWAYS_OK = True     # keep 127.0.0.1 usable for the test harness
 
-# Only accept an agent connection from this address. None = accept any.
-ALLOWED_G3_IP = SUGGESTED_G3_IP
+# Only machines listed in DEVICES may connect. Anything else is refused.
+ALLOWED_G3_IP = SUGGESTED_G3_IP        # kept for older callers
+
+# --- the machines ----------------------------------------------------------
+# Keyed by a short name used in tool calls. `ip` is how an inbound connection
+# is identified, so it must match what the machine is actually configured with.
+# Add a machine here and the bridge picks it up on restart.
+DEVICES = {
+    "g3": {
+        "ip": "192.168.11.2",
+        "canvas": (800, 600),          # native on the iMac G3 CRT
+        "os": "macos9",
+        "label": "iMac G3 - Mac OS 9.2",
+    },
+    "emac": {
+        "ip": "192.168.11.3",
+        "canvas": (1024, 768),         # native on the eMac 17in CRT
+        "os": "unknown",               # OS 9 or OS X -- decides the control path
+        "label": "eMac",
+    },
+}
+DEFAULT_DEVICE = "g3"
 
 # --- Tier 0 browser display ------------------------------------------------
 # How often the Mac's browser reloads the page. Every reload is a full page
@@ -41,6 +61,9 @@ REFRESH_SECONDS = 5
 TO_MAC_DIR = "transfer/to-mac"       # PC -> Mac. Served over HTTP.
 FROM_MAC_DIR = "transfer/from-mac"   # Mac -> PC. Written by uploads.
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+
+import os as _os
+RUN_DIR_ABS = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "run")
 
 # Mac OS 9 is cooperatively multitasked. If the agent window goes behind
 # another app its socket stalls until it comes back. Do not read a stall as

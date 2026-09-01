@@ -33,7 +33,7 @@ for stream in (sys.stdout, sys.stderr):
         pass
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FRAME_PNG = os.path.join(HERE, "..", "run", "frame.png")
+
 TO_MAC = os.path.join(HERE, "..", config.TO_MAC_DIR)
 FROM_MAC = os.path.join(HERE, "..", config.FROM_MAC_DIR)
 
@@ -41,6 +41,14 @@ G3D_HOST = os.environ.get("G3D_HOST", "127.0.0.1")
 G3D_PORT = int(os.environ.get("G3D_PORT", str(config.CONTROL_PORT)))
 SERVER_VERSION = "0.1.0"
 SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
+
+DEVICE_ARG = {
+    "device": {
+        "type": "string",
+        "description": ("Which machine, e.g. 'g3' or 'emac'. Omit it when only one "
+                        "is connected -- the bridge picks that one. Use g3_devices to list."),
+    },
+}
 
 GRAMMAR = """The canvas is %d x %d. Each command is one line.
 Coordinates are pixels, origin top-left. Colours are 0-255 per channel.
@@ -72,8 +80,14 @@ class DaemonError(Exception):
     pass
 
 
-def daemon_exec(lines):
-    """Run command lines through g3d. Returns a list of (line, verb, args)."""
+def daemon_exec(lines, device=None):
+    """Run command lines through g3d. Returns a list of (line, verb, args).
+
+    A device name is sent as a leading USE, which sets the target for the rest
+    of the connection. Omitted, the daemon picks the only machine it has seen.
+    """
+    if device:
+        lines = ["USE %s" % device] + list(lines)
     try:
         s = socket.create_connection((G3D_HOST, G3D_PORT), timeout=20)
     except OSError as e:
@@ -90,7 +104,10 @@ def daemon_exec(lines):
             if not raw:
                 raise DaemonError("g3d closed the connection mid-batch")
             _, verb, args = protocol.decode(raw.decode("ascii", "replace"))
-            out.append((line, verb, args))
+            if line.startswith("USE ") and verb != "OK":
+                raise DaemonError(" ".join(args))
+            if not line.startswith("USE "):
+                out.append((line, verb, args))
     finally:
         s.close()
     return out
@@ -114,12 +131,20 @@ def render_results(results):
 # ---------------------------------------------------------------------------
 TOOLS = [
     {
+        "name": "g3_devices",
+        "description": (
+            "List the vintage machines the bridge knows about, their addresses, "
+            "screen sizes, and whether each is connected. Call this first if you "
+            "are unsure which machine to target."),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "g3_status",
         "description": (
             "Check whether the Mac OS 9 iMac G3 is connected to the bridge, and "
             "report its screen size and colour depth. Call this first if a draw "
             "fails, or to confirm the machine is on the other end of the cable."),
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "inputSchema": {"type": "object", "properties": dict(DEVICE_ARG), "additionalProperties": False},
     },
     {
         "name": "g3_draw",
@@ -132,6 +157,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "device": dict(DEVICE_ARG)["device"],
                 "commands": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -158,6 +184,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "device": dict(DEVICE_ARG)["device"],
                 "r": {"type": "integer", "minimum": 0, "maximum": 255, "default": 0},
                 "g": {"type": "integer", "minimum": 0, "maximum": 255, "default": 0},
                 "b": {"type": "integer", "minimum": 0, "maximum": 255, "default": 0},
@@ -171,7 +198,7 @@ TOOLS = [
             "Look at what is currently displayed on the iMac G3's screen. Returns "
             "the image. Use this to check your own drawing came out right, or to "
             "see the current state before adding to it."),
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "inputSchema": {"type": "object", "properties": dict(DEVICE_ARG), "additionalProperties": False},
     },
     {
         "name": "g3_send_file",
@@ -184,6 +211,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "device": dict(DEVICE_ARG)["device"],
                 "path": {"type": "string", "description": "Path to the file on the PC."},
                 "rename": {"type": "string", "description": "Optional name to give it on the Mac."},
             },
@@ -195,7 +223,7 @@ TOOLS = [
         "name": "g3_transfers",
         "description": (
             "List files waiting to go to the Mac and files the Mac has sent to the PC."),
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "inputSchema": {"type": "object", "properties": dict(DEVICE_ARG), "additionalProperties": False},
     },
     {
         "name": "g3_read_received",
@@ -204,7 +232,10 @@ TOOLS = [
             "anything binary reports its size and location instead."),
         "inputSchema": {
             "type": "object",
-            "properties": {"name": {"type": "string", "description": "Filename as listed by g3_transfers."}},
+            "properties": {
+                "device": dict(DEVICE_ARG)["device"],
+                "name": {"type": "string", "description": "Filename as listed by g3_transfers."},
+            },
             "required": ["name"],
             "additionalProperties": False,
         },
@@ -228,6 +259,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "device": dict(DEVICE_ARG)["device"],
                 "script": {"type": "string", "description": "AppleScript source, OS 9 dialect."},
                 "timeout": {"type": "number", "default": 60,
                             "description": "Seconds to wait for the Mac to reply."},
@@ -241,37 +273,53 @@ TOOLS = [
         "description": (
             "Check whether the AppleScript applet on the Mac is alive and polling, "
             "and how long ago it last checked in."),
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "inputSchema": {"type": "object", "properties": dict(DEVICE_ARG), "additionalProperties": False},
     },
     {
         "name": "g3_events",
         "description": (
             "Drain input events the iMac G3 has sent back since the last call "
             "(mouse clicks, key presses, quit). Returns them oldest first."),
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "inputSchema": {"type": "object", "properties": dict(DEVICE_ARG), "additionalProperties": False},
     },
 ]
 
 
 def call_tool(name, args):
     """Returns (text, is_error)."""
+    dev = args.get("device")
+
+    if name == "g3_devices":
+        results = daemon_exec(["DEVICES"])
+        _, verb, vals = results[0]
+        if verb != "OK":
+            return " ".join(vals), True
+        lines = ["%-8s %-15s %-10s %-8s %s" % ("NAME", "ADDRESS", "SCREEN", "OS", "STATE")]
+        for v in vals:
+            parts = v.split("|")
+            if len(parts) == 5:
+                lines.append("%-8s %-15s %-10s %-8s %s" % tuple(parts))
+        lines.append("")
+        lines.append("Omit the device argument when only one machine is connected.")
+        return "\n".join(lines), False
+
     if name == "g3_status":
-        results = daemon_exec(["STATUS"])
+        results = daemon_exec(["STATUS"], dev)
         _, verb, vals = results[0]
         if verb != "OK":
             return "Bridge error: %s" % " ".join(vals), True
         info = dict(v.split("=", 1) for v in vals if "=" in v)
         if info.get("state") != "connected":
-            return ("No G3 connected. The daemon is running and listening on :9990, "
-                    "but the Mac has not dialled in.\n"
-                    "Check: the Ethernet cable, the Mac's TCP/IP control panel "
-                    "(static IP 192.168.11.2, mask 255.255.255.0), and that the "
-                    "agent is running on the Mac."), False
+            return ("%s (%s) is not connected. The daemon is listening on :9990, "
+                    % (info.get("device", "?"), info.get("ip", "?")) +
+                    "but that machine has not dialled in.\n"
+                    "Tier 0 (its browser pointed at the bridge) still works without "
+                    "an agent -- g3_draw will render to the mirror either way."), False
         return ("G3 connected.\n" + "\n".join("  %s: %s" % kv for kv in sorted(info.items()))), False
 
     if name == "g3_clear":
         rgb = (args.get("r", 0), args.get("g", 0), args.get("b", 0))
-        text, err = render_results(daemon_exec(["CLEAR %d %d %d" % rgb, "FLUSH"]))
+        text, err = render_results(daemon_exec(["CLEAR %d %d %d" % rgb, "FLUSH"], dev))
         return text, err
 
     if name == "g3_draw":
@@ -282,15 +330,21 @@ def call_tool(name, args):
             cmds.insert(0, "CLEAR 0 0 0")
         if args.get("present", True) and cmds[-1].strip().upper() != "FLUSH":
             cmds.append("FLUSH")
-        text, err = render_results(daemon_exec(cmds))
+        text, err = render_results(daemon_exec(cmds, dev))
         return text, err
 
     if name == "g3_screenshot":
-        # The daemon writes the mirror here on every FLUSH.
-        daemon_exec(["FLUSH"])
-        if not os.path.exists(FRAME_PNG):
-            return "Nothing has been drawn yet.", True
-        with open(FRAME_PNG, "rb") as fh:
+        # The daemon writes each device's mirror out on every FLUSH.
+        daemon_exec(["FLUSH"], dev)
+        which = dev
+        if not which:
+            res = daemon_exec(["STATUS"], None)
+            info = dict(v.split("=", 1) for v in res[0][2] if "=" in v)
+            which = info.get("device", config.DEFAULT_DEVICE)
+        frame = os.path.join(HERE, "..", "run", "frame_%s.png" % which)
+        if not os.path.exists(frame):
+            return "Nothing has been drawn on %s yet." % which, True
+        with open(frame, "rb") as fh:
             data = base64.b64encode(fh.read()).decode("ascii")
         return {"image": data, "mime": "image/png"}, False
 
@@ -353,7 +407,7 @@ def call_tool(name, args):
             return "No script given.", True
         timeout = float(args.get("timeout") or 60)
         enc = base64.b64encode(src.encode("utf-8")).decode("ascii")
-        results = daemon_exec(["APPLESCRIPT %s %g" % (enc, timeout)])
+        results = daemon_exec(["APPLESCRIPT %s %g" % (enc, timeout)], dev)
         _, verb, vals = results[0]
         if verb != "OK":
             return " ".join(vals), True
@@ -366,7 +420,7 @@ def call_tool(name, args):
         return out if out.strip() else "(the script ran and returned nothing)", False
 
     if name == "g3_applet_status":
-        results = daemon_exec(["APPLETSTATUS"])
+        results = daemon_exec(["APPLETSTATUS"], dev)
         _, verb, vals = results[0]
         if verb != "OK":
             return " ".join(vals), True
@@ -379,7 +433,7 @@ def call_tool(name, args):
                 % (info.get("applet"), info.get("polls"), info.get("last_poll"))), False
 
     if name == "g3_events":
-        results = daemon_exec(["EVENTS"])
+        results = daemon_exec(["EVENTS"], dev)
         _, verb, vals = results[0]
         if verb != "OK":
             return "Bridge error: %s" % " ".join(vals), True

@@ -59,7 +59,7 @@ def main():
     EXPECTED = sorted([
         "g3_status", "g3_draw", "g3_clear", "g3_screenshot", "g3_events",
         "g3_send_file", "g3_transfers", "g3_read_received",
-        "g3_applescript", "g3_applet_status",
+        "g3_applescript", "g3_applet_status", "g3_devices",
     ])
     check("exposes exactly the expected tools", names == EXPECTED,
           "missing=%s unexpected=%s" % (sorted(set(EXPECTED) - set(names)),
@@ -108,6 +108,29 @@ def main():
     print("tools/call g3_send_file with a bad path")
     r = rpc("tools/call", {"name": "g3_send_file", "arguments": {"path": "Z:/nope.txt"}}, 52)
     check("missing file is an error", r.get("result", {}).get("isError") is True)
+
+    print("tools/call g3_devices")
+    r = rpc("tools/call", {"name": "g3_devices", "arguments": {}}, 60)
+    text = r.get("result", {}).get("content", [{}])[0].get("text", "")
+    print("      -> " + text.replace("\n", "\n         "))
+    check("lists both machines", "g3" in text and "emac" in text)
+
+    print("drawing targets the named device")
+    r = rpc("tools/call", {"name": "g3_draw", "arguments": {
+        "device": "emac", "commands": ["PEN 0 255 0", "RECT 5 5 1000 740"]}}, 61)
+    t = r.get("result", {}).get("content", [{}])[0].get("text", "")
+    check("g3_draw honours device=emac", r["result"]["isError"] is False and "emac" in t, t[:80])
+
+    print("an unknown device is a clean error, not a crash")
+    r = rpc("tools/call", {"name": "g3_draw", "arguments": {
+        "device": "nosuchmac", "commands": ["PEN 1 2 3"]}}, 62)
+    check("unknown device flagged", r.get("result", {}).get("isError") is True,
+          r.get("result", {}).get("content", [{}])[0].get("text", "")[:80])
+
+    print("screenshot of a specific device")
+    r = rpc("tools/call", {"name": "g3_screenshot", "arguments": {"device": "emac"}}, 63)
+    c = r.get("result", {}).get("content", [{}])[0]
+    check("screenshot returns an image", c.get("type") == "image", str(c.get("type")))
 
     print("unknown tool is an error, not a crash")
     r = rpc("tools/call", {"name": "g3_nope", "arguments": {}}, 6)
