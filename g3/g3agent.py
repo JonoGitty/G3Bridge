@@ -1,6 +1,8 @@
 # G3Bridge agent -- runs ON the Mac OS 9 machine.
 #
-# Requires MacPython-OS9 2.3.x (2.3.5 preferred, 2.3.3 works).
+# Requires MacPython-OS9 2.3.3 -- the last release for classic Mac OS.
+# (2.3.5 is often cited as the last, but a check against primary sources
+#  found no classic Mac OS build of it. Use 2.3.3.)
 # Drop this in a folder on the Mac and double-click it, or open it in the
 # MacPython IDE and hit Run.
 #

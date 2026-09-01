@@ -43,7 +43,7 @@ DEVICES = {
     },
     "emac": {
         "ip": "192.168.11.3",
-        "canvas": (1024, 768),         # native on the eMac 17in CRT
+        "canvas": (1024, 768),         # eMac standard; the 17in CRT maxes at 1280x960
         "os": "unknown",               # OS 9 or OS X -- decides the control path
         "label": "eMac",
     },

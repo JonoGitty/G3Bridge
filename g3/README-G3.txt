@@ -48,10 +48,11 @@ them. Sharper, faster, and it can talk back.
    MacPython needs, so this should be fine. Check in the Extensions folder
    if the installer complains.
 
-2. Get MacPython for Mac OS 9. Version 2.3.5 is the last one ever made.
-   The original host (ftp.cwi.nl) is off the air. Use Macintosh Garden or
-   the Internet Archive copy. The file is called MacPython235full.bin.
-   MacPython 2.3.3 also works if 2.3.5 is awkward to find.
+2. Get MacPython for Mac OS 9. Ask for MacPython-OS9 2.3.3 - the last
+   version made for classic Mac OS. The file is MacPython233full.bin.
+   The original host (ftp.cwi.nl) is off the air; use Macintosh Garden or
+   the Internet Archive. Ignore anything offering "2.3.5 for OS 9" - no
+   classic build of that was ever published.
 
 3. Install it, then download the agent from the PC. In the Mac's browser:
 

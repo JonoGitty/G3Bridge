@@ -80,10 +80,19 @@ def bind_addresses():
     """
     if not config.BIND_TO_CABLE_ONLY:
         return ["0.0.0.0"]
-    addrs = local_ipv4()
-    if config.SUGGESTED_PC_IP in addrs:
+    # Ask the OS by TRYING to bind, rather than enumerating addresses.
+    # getaddrinfo(gethostname()) does NOT return the manual addresses on this
+    # adapter -- it reported only the WiFi address while 192.168.11.10 was
+    # configured and usable -- so enumerating silently fell through to
+    # 0.0.0.0 and made the "cable adapter only" guarantee untrue.
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind((config.SUGGESTED_PC_IP, 0))
         return [config.SUGGESTED_PC_IP, "127.0.0.1"]
-    return ["0.0.0.0"]
+    except OSError:
+        return ["0.0.0.0"]
+    finally:
+        probe.close()
 
 
 def log(msg):
