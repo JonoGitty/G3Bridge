@@ -19,6 +19,7 @@
 
 Host emac
     HostName 192.168.11.3
+    User mac
     IdentityFile C:\AI\G3Bridge\host\ssh\id_g3bridge
     IdentitiesOnly yes
 

@@ -508,6 +508,56 @@ def _pct(text):
     return out.replace("\r\n", "\n").replace("\r", "\n")
 
 
+HARDEN_SCRIPT = """#!/bin/sh
+# G3Bridge hardening for a Mac OS X machine on the isolated cable.
+# Run with sudo:   curl -s %(pc)s:%(port)d/h | sudo sh
+#
+# Everything here is reversible in System Preferences > Network.
+# It does NOT touch your files, accounts, or anything outside networking.
+
+SVC="Ethernet"
+IP="%(ip)s"
+MASK="255.255.255.0"
+
+echo "G3Bridge hardening"
+echo
+
+# 1. Correct the subnet mask. A /16 makes the Mac treat the whole of
+#    192.168.x.x as directly reachable, including the house LAN range.
+echo "1. subnet mask -> $MASK"
+networksetup -setmanual "$SVC" "$IP" "$MASK" "" 2>/dev/null && echo "   done" || echo "   FAILED (need sudo?)"
+
+# 2. IPv6 off. Left on Automatic it will accept a Router Advertisement and
+#    install a default route, which would defeat the whole arrangement.
+echo "2. IPv6 -> off"
+networksetup -setv6off "$SVC" 2>/dev/null && echo "   done" || echo "   FAILED"
+
+# 3. Disable the interfaces that could reach another network.
+for s in "Internal Modem" "FireWire"; do
+  echo "3. disabling network service: $s"
+  networksetup -setnetworkserviceenabled "$s" off 2>/dev/null && echo "   done" || echo "   not present / failed"
+done
+
+# 4. Stop it looking for updates or time servers it can never reach.
+echo "4. software update + network time off"
+defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled -bool false 2>/dev/null && echo "   software update: off"
+systemsetup -setusingnetworktime off >/dev/null 2>&1 && echo "   network time: off" || echo "   network time: unchanged"
+
+echo
+echo "--- result ---"
+networksetup -getinfo "$SVC" 2>/dev/null | grep -E "IP address|Subnet|Router|IPv6:"
+echo
+echo "default route (should be link-scoped, no gateway address):"
+netstat -rn -f inet | grep -w default || echo "  none"
+echo
+echo "reachability test (both should fail):"
+ping -c 1 -t 3 8.8.8.8 >/dev/null 2>&1 && echo "  !! REACHED 8.8.8.8 -- NOT ISOLATED" || echo "  ok: cannot reach 8.8.8.8"
+ping -c 1 -t 3 apple.com >/dev/null 2>&1 && echo "  !! RESOLVED apple.com -- NOT ISOLATED" || echo "  ok: cannot resolve apple.com"
+echo
+echo "Done."
+"""
+
+
 SETUP_SCRIPT = """#!/bin/sh
 # G3Bridge enrolment. Run on the Mac; safe to run twice.
 #
@@ -770,6 +820,13 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             log("sent %s to the Mac (%s)" % (name, note))
             self._send(200, "application/octet-stream", body,
                        {"Content-Disposition": 'attachment; filename="%s"' % name})
+            return
+
+        if path in ("/h", "/harden.sh"):
+            body = HARDEN_SCRIPT % {"pc": config.SUGGESTED_PC_IP, "port": HTTP_PORT,
+                                    "ip": dev.ip}
+            log("%s: fetched the hardening script" % dev.name)
+            self._send(200, "text/plain", body)
             return
 
         if path in ("/s", "/setup.sh"):
