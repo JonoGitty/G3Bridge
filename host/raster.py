@@ -167,11 +167,20 @@ class PilCanvas:
             # Mac OS 9.0-9.0.3 shipped Internet Explorer 4.5, which has no PNG
             # support at all, and Netscape 4 dithers adaptive palettes badly on
             # an 8-bit display. Web-safe renders correctly on all of them.
+            # DITHERING OFF is not a detail. Pillow dithers by default, which
+            # on flat vector artwork sprays noise across every solid area and
+            # destroys LZW compression: measured 135KB dithered vs 17KB not,
+            # on the same 800x600 frame. On a 233MHz Mac that 8x is the
+            # difference between a ~20 second refresh and a usable one.
             try:
                 pal = Image.WEB
             except AttributeError:
                 pal = Image.ADAPTIVE
-            self.img.convert("P", palette=pal).save(path)
+            try:
+                nodither = Image.Dither.NONE
+            except AttributeError:
+                nodither = 0                      # older Pillow
+            self.img.convert("P", palette=pal, dither=nodither).save(path)
         else:
             self.img.save(path)
 

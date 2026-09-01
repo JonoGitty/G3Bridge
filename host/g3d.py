@@ -21,6 +21,7 @@ replies -- that bug cost an afternoon once already.
 
 import os
 import socket
+import base64
 import http.server
 import socketserver
 import sys
@@ -223,6 +224,79 @@ class Link:
         return out
 
 
+class CommandQueue:
+    """One-at-a-time command channel for the AppleScript applet.
+
+    The applet is a pure HTTP client -- it cannot listen, so it polls. It asks
+    GET /cmd, gets a script or nothing, runs it, and posts the output back to
+    /result. Only one command is outstanding at a time, which removes any need
+    for ids or matching on the Mac side, where the scripting is awkward.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._pending = None          # script text waiting to be collected
+        self._inflight = None         # collected, awaiting a result
+        self._done = threading.Event()
+        self._result = None
+        self.last_poll = None
+        self.polls = 0
+
+    def submit(self, script, timeout=60.0):
+        with self._lock:
+            if self._pending is not None or self._inflight is not None:
+                raise IOError("a command is already outstanding")
+            self._pending = script
+            self._result = None
+            self._done.clear()
+        if not self._done.wait(timeout):
+            with self._lock:
+                self._pending = None
+                self._inflight = None
+            raise IOError(
+                "no reply within %gs. Is the applet running on the Mac? "
+                "It has polled %d time(s)%s."
+                % (timeout, self.polls,
+                   "" if not self.last_poll
+                   else ", last %ds ago" % int(time.time() - self.last_poll)))
+        with self._lock:
+            return self._result
+
+    def collect(self):
+        """Called by GET /cmd."""
+        with self._lock:
+            self.polls += 1
+            self.last_poll = time.time()
+            if self._pending is None:
+                return None
+            self._inflight = self._pending
+            self._pending = None
+            return self._inflight
+
+    def deliver(self, text):
+        """Called by the result endpoint."""
+        with self._lock:
+            if self._inflight is None:
+                return False
+            self._result = text
+            self._inflight = None
+        self._done.set()
+        return True
+
+    def status(self):
+        with self._lock:
+            state = "idle"
+            if self._pending is not None:
+                state = "queued"
+            elif self._inflight is not None:
+                state = "running"
+            age = "never"
+            if self.last_poll:
+                age = "%ds ago" % int(time.time() - self.last_poll)
+            return ["applet=%s" % state, "polls=%d" % self.polls, "last_poll=%s" % age]
+
+
+QUEUE = CommandQueue()
 LINK = Link()
 MIRROR = raster.Screen(config.CANVAS_W, config.CANVAS_H)
 FRAME_SEQ = [0]
@@ -292,6 +366,26 @@ class ControlHandler(socketserver.StreamRequestHandler):
             if verb == "STATUS":
                 self._reply("OK", seq, *LINK.status())
                 continue
+            if verb == "APPLESCRIPT":
+                try:
+                    body = base64.b64decode(args[0]).decode("utf-8")
+                    timeout = float(args[1]) if len(args) > 1 else 60.0
+                except Exception as e:
+                    self._reply("ERR", seq, "bad APPLESCRIPT request: %s" % e)
+                    continue
+                try:
+                    out = QUEUE.submit(body, timeout)
+                except IOError as e:
+                    self._reply("ERR", seq, str(e))
+                    continue
+                self._reply("OK", seq, base64.b64encode(
+                    (out or "").encode("utf-8")).decode("ascii"))
+                continue
+
+            if verb == "APPLETSTATUS":
+                self._reply("OK", seq, *QUEUE.status())
+                continue
+
             if verb == "EVENTS":
                 self._reply("OK", seq, *["|".join(e) for e in LINK.drain_events()])
                 continue
@@ -367,7 +461,7 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
 
     def log_message(self, fmt, *a):
-        log("http %s" % (fmt % a))
+        log("http %s %s" % (self.client_address[0], fmt % a))
 
     def _send(self, code, ctype, body, extra=None):
         if isinstance(body, str):
@@ -479,6 +573,32 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
                        {"Content-Disposition": 'attachment; filename="%s"' % name})
             return
 
+        if path == "/cmd":
+            script = QUEUE.collect()
+            if script is None:
+                # Empty body is the applet's "nothing to do" signal.
+                self._send(200, "text/plain", "")
+                return
+            # Classic Mac wants CR. run script on a LF-only string is asking
+            # for trouble on OS 9.
+            body = script.replace("\r\n", "\n").replace("\n", "\r")
+            log("dispatched %d chars of script to the Mac" % len(script))
+            self._send(200, "text/plain", body)
+            return
+
+        if path == "/result":
+            # GET fallback: the applet may smuggle output back in the query
+            # string if URL Access Scripting's upload turns out to be unusable
+            # for http:// destinations.
+            from urllib.parse import unquote_plus
+            out = ""
+            for pair in query.split("&"):
+                if pair.startswith("out="):
+                    out = unquote_plus(pair[4:])
+            ok = QUEUE.deliver(out)
+            self._send(200, "text/plain", "ok" if ok else "nothing was outstanding")
+            return
+
         if path == "/upload":
             self._send(200, "text/html", UPLOAD_PAGE)
             return
@@ -496,7 +616,34 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
 
         self._send(404, "text/plain", "not found")
 
+    def do_PUT(self):
+        self.do_POST()
+
     def do_POST(self):
+        if self.path.split("?", 1)[0] == "/result":
+            # Accept whatever the applet sends -- raw text, a PUT body, or a
+            # multipart part. We do not control what URL Access Scripting
+            # emits, so be liberal and strip a multipart wrapper if present.
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            raw = self.rfile.read(length) if length > 0 else b""
+            ctype = self.headers.get("Content-Type") or ""
+            if "multipart/" in ctype.lower():
+                try:
+                    parts = xfer.parse_multipart(raw, ctype, config.MAX_UPLOAD_BYTES)
+                    if parts:
+                        raw = parts[0][1]
+                except ValueError:
+                    pass
+            text = raw.decode("mac-roman", "replace").replace("\r\n", "\n").replace("\r", "\n")
+            ok = QUEUE.deliver(text)
+            log("result from the Mac: %d chars%s"
+                % (len(text), "" if ok else " (nothing was outstanding)"))
+            self._send(200, "text/plain", "ok" if ok else "nothing was outstanding")
+            return
+
         if self.path.split("?", 1)[0] != "/upload":
             self._send(404, "text/plain", "not found")
             return

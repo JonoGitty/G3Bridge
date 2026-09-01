@@ -210,6 +210,40 @@ TOOLS = [
         },
     },
     {
+        "name": "g3_applescript",
+        "description": (
+            "Run AppleScript on the Mac and get the output back. This is the main "
+            "way to CONTROL the machine as opposed to drawing on it: list and read "
+            "files, move and delete them, launch and quit applications, read system "
+            "information, restart or shut down.\n\n"
+            "Requires the G3Bridge applet to be running on the Mac (it polls this PC "
+            "for work). Use g3_applet_status to check.\n\n"
+            "Classic Mac OS 9 AppleScript only. Paths are colon-separated, e.g.\n"
+            "  \"Macintosh HD:System Folder:\"\n"
+            "There is NO `do shell script`, no POSIX paths and no System Events -- "
+            "those are all Mac OS X. Examples that do work:\n"
+            "  tell application \"Finder\" to get name of every disk\n"
+            "  tell application \"Finder\" to get name of every item of disk 1\n"
+            "  return (system attribute \"sysv\")"),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "script": {"type": "string", "description": "AppleScript source, OS 9 dialect."},
+                "timeout": {"type": "number", "default": 60,
+                            "description": "Seconds to wait for the Mac to reply."},
+            },
+            "required": ["script"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "g3_applet_status",
+        "description": (
+            "Check whether the AppleScript applet on the Mac is alive and polling, "
+            "and how long ago it last checked in."),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "g3_events",
         "description": (
             "Drain input events the iMac G3 has sent back since the last call "
@@ -312,6 +346,37 @@ def call_tool(name, args):
             return ("%s looks binary, %s. It is at %s on the PC."
                     % (os.path.basename(fn), xfer.human(len(data)), fn)), False
         return text, False
+
+    if name == "g3_applescript":
+        src = args.get("script") or ""
+        if not src.strip():
+            return "No script given.", True
+        timeout = float(args.get("timeout") or 60)
+        enc = base64.b64encode(src.encode("utf-8")).decode("ascii")
+        results = daemon_exec(["APPLESCRIPT %s %g" % (enc, timeout)])
+        _, verb, vals = results[0]
+        if verb != "OK":
+            return " ".join(vals), True
+        if not vals:
+            return "(the Mac returned nothing)", False
+        try:
+            out = base64.b64decode(vals[0]).decode("utf-8")
+        except Exception as e:
+            return "could not decode the Mac's reply: %s" % e, True
+        return out if out.strip() else "(the script ran and returned nothing)", False
+
+    if name == "g3_applet_status":
+        results = daemon_exec(["APPLETSTATUS"])
+        _, verb, vals = results[0]
+        if verb != "OK":
+            return " ".join(vals), True
+        info = dict(v.split("=", 1) for v in vals if "=" in v)
+        if info.get("polls") == "0":
+            return ("The applet has never checked in. Start G3Bridge Agent on the Mac.\n"
+                    "If it is running, check it points at %s:%d."
+                    % (config.SUGGESTED_PC_IP, config.HTTP_PORT)), False
+        return ("Applet state: %s\n  polls so far: %s\n  last checked in: %s"
+                % (info.get("applet"), info.get("polls"), info.get("last_poll"))), False
 
     if name == "g3_events":
         results = daemon_exec(["EVENTS"])
