@@ -33,6 +33,7 @@ import config  # noqa: E402
 import devices  # noqa: E402
 import news  # noqa: E402
 import pages  # noqa: E402
+import video  # noqa: E402
 import webproxy  # noqa: E402
 import protocol  # noqa: E402
 import raster  # noqa: E402
@@ -49,6 +50,7 @@ BOOT_DIR = os.path.join(HERE, "..", "g3")
 WWW_DIR = os.path.join(HERE, "..", "www")
 GAMES_DIR = os.path.join(WWW_DIR, "games")
 CLAUDE_DIR = os.path.join(WWW_DIR, "claude")
+VIDEO_DIR = os.path.join(WWW_DIR, "video")
 TO_MAC = os.path.join(HERE, "..", config.TO_MAC_DIR)
 FROM_MAC = os.path.join(HERE, "..", config.FROM_MAC_DIR)
 
@@ -899,6 +901,47 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
                 self._send(200, "text/html", f.read())
             return
 
+        if path == "/video":
+            from urllib.parse import unquote
+            u = unquote(_q(query, "u") or "")
+            prof = (_q(query, "p") or video.DEFAULT_PROFILE)
+            if u:
+                try:
+                    j = video.submit(u, prof, VIDEO_DIR)
+                    log("%s: video queued %r as %s" % (dev.name, u[:60], prof))
+                except ValueError as e:
+                    log("%s: video rejected: %s" % (dev.name, e))
+            self._send(200, "text/html",
+                       pages.video_page(video.PROFILES, video.DEFAULT_PROFILE,
+                                        video.jobs(), video.library(VIDEO_DIR),
+                                        news.ago, video.available()))
+            return
+
+        if path.startswith("/video/"):
+            name = os.path.basename(path[len("/video/"):])
+            fn = os.path.join(VIDEO_DIR, name)
+            if not name.endswith(".mp4") or not os.path.isfile(fn):
+                self._send(404, "text/plain", "no such video: %s" % name)
+                return
+            # Streamed rather than read into memory: these are tens of megabytes
+            # and the daemon should not hold one per request.
+            size = os.path.getsize(fn)
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(size))
+            self.send_header("Content-Disposition", 'inline; filename="%s"' % name)
+            self.end_headers()
+            with open(fn, "rb") as f:
+                while True:
+                    chunk = f.read(64 * 1024)
+                    if not chunk:
+                        break
+                    try:
+                        self.wfile.write(chunk)
+                    except OSError:
+                        break
+            return
+
         if path == "/web":
             import time as _t
             from urllib.parse import unquote
@@ -1277,7 +1320,7 @@ class Reusable(socketserver.ThreadingTCPServer):
 
 
 def main():
-    for d in (RUN_DIR, TO_MAC, FROM_MAC, GAMES_DIR, CLAUDE_DIR):
+    for d in (RUN_DIR, TO_MAC, FROM_MAC, GAMES_DIR, CLAUDE_DIR, VIDEO_DIR):
         if not os.path.isdir(d):
             os.makedirs(d)
 

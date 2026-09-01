@@ -47,7 +47,8 @@ CSS = """
 
 def _shell(title, current, body, note=""):
     tabs = [("/", "Home"), ("/news", "News"), ("/games", "Games"),
-            ("/web", "Web"), ("/claude-screen", "Claude"), ("/display", "Display"),
+            ("/web", "Web"), ("/video", "Video"),
+            ("/claude-screen", "Claude"), ("/display", "Display"),
             ("/files", "Files"), ("/setup", "Setup")]
     nav = ""
     for href, label in tabs:
@@ -81,6 +82,10 @@ def index_page(dev, games, news_ready):
          "Search and browse the internet <i>through the PC</i>. It fetches the page, "
          "strips every script and remote resource, and sends back plain readable "
          "HTML. This machine still opens no connection to anyone but the PC."),
+        ("/video", "Video",
+         "Paste a video address. The PC downloads it and re-encodes it to "
+         "something a 1.25GHz G4 can actually decode, then serves it down the "
+         "cable for QuickTime to play."),
         ("/claude-screen", "Claude's screen",
          "Whatever Claude has published for this machine to display."),
         ("/display", "Display",
@@ -340,3 +345,59 @@ def web_error(what, detail):
               '<p style="margin-top:8px">%s</p></div>'
             % (html.escape(what), html.escape(detail[:300])))
     return _shell("Web", "/web", body)
+
+
+# ---------------------------------------------------------------- video
+def video_page(profiles, default, jobs, lib, ago, available):
+    body = ('<h1>Video</h1><p class="sub">The PC fetches it and re-encodes it for '
+            'this machine. MPEG-4 Part 2 by default &mdash; it is what QuickTime on '
+            'PowerPC was built around and costs a fraction of the CPU that H.264 '
+            'does.</p>')
+    if not available:
+        body += ('<p class="warn">ffmpeg or yt-dlp is missing on the PC, so nothing '
+                 'can be converted.</p>')
+        return _shell("Video", "/video", body)
+
+    opts = ""
+    for key in ("small", "normal", "large", "sharp"):
+        if key not in profiles:
+            continue
+        sel = ' selected="selected"' if key == default else ""
+        opts += '<option value="%s"%s>%s</option>' % (key, sel, html.escape(profiles[key][4]))
+    body += ('<form action="/video" method="get">'
+             '<p><input type="text" name="u" size="54" value="" '
+             'style="background:#0a0d15;color:#e6edf3;border:1px solid #2b3550;padding:7px 9px">'
+             ' <select name="p" style="background:#0a0d15;color:#e6edf3;border:1px solid #2b3550;padding:6px">%s</select>'
+             ' <input type="submit" value="Convert"></p></form>' % opts)
+
+    if jobs:
+        body += '<h2>Conversions</h2>'
+        for j in jobs[:8]:
+            if j.state == "ready":
+                line = ('<div class="h"><a href="/video/%s">%s</a></div>'
+                        '<div class="w"><span class="ok">ready</span> &middot; %s &middot; '
+                        'took %ds</div>'
+                        % (html.escape(j.filename), html.escape(j.title[:78]),
+                           _size(j.size), int((j.finished or 0) - j.started)))
+            elif j.state == "failed":
+                line = ('<div class="h">%s</div><div class="w warn">failed &mdash; %s</div>'
+                        % (html.escape(j.title[:78]), html.escape(j.message[:150])))
+            else:
+                line = ('<div class="h">%s</div><div class="w">%s&hellip; '
+                        '(reload to check)</div>'
+                        % (html.escape(j.title[:78]), html.escape(j.state)))
+            body += '<div class="item">%s</div>' % line
+
+    if lib:
+        body += '<h2>Ready to watch</h2>'
+        for name, size, mtime in lib:
+            body += ('<div class="item"><div class="h"><a href="/video/%s">%s</a></div>'
+                     '<div class="w">%s &middot; %s</div></div>'
+                     % (html.escape(name), html.escape(name[:-4].replace("_", " ")),
+                        _size(size), time.strftime("%a %d %b %H:%M", time.localtime(mtime))))
+        body += ('<p class="sub" style="margin-top:18px">Clicking one hands it to '
+                 'QuickTime Player. If it stutters, convert it again at a smaller '
+                 'size.</p>')
+    elif not jobs:
+        body += '<p class="sub" style="margin-top:20px">Nothing converted yet.</p>'
+    return _shell("Video", "/video", body)
