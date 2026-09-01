@@ -1,0 +1,542 @@
+<title>G3Bridge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#f6f4ef;
+  --raise:#fffdf9;
+  --sunk:#ebe7de;
+  --ink:#1b1f26;
+  --ink-2:#4a5361;
+  --ink-3:#7b8595;
+  --rule:#ddd7ca;
+  --amber:#b6740c;
+  --amber-soft:#f2e3c4;
+  --cyan:#0d6a86;
+  --green:#2f6b45;
+  --coral:#a8442c;
+  --shadow:rgba(27,31,38,.07);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0f1319;
+    --raise:#161b23;
+    --sunk:#0a0d12;
+    --ink:#e8ecf2;
+    --ink-2:#a8b3c2;
+    --ink-3:#6d7887;
+    --rule:#252c37;
+    --amber:#e2a13c;
+    --amber-soft:#2a2216;
+    --cyan:#4ec3e0;
+    --green:#5cbf85;
+    --coral:#e08163;
+    --shadow:rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0f1319;
+  --raise:#161b23;
+  --sunk:#0a0d12;
+  --ink:#e8ecf2;
+  --ink-2:#a8b3c2;
+  --ink-3:#6d7887;
+  --rule:#252c37;
+  --amber:#e2a13c;
+  --amber-soft:#2a2216;
+  --cyan:#4ec3e0;
+  --green:#5cbf85;
+  --coral:#e08163;
+  --shadow:rgba(0,0,0,.4);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,"Segoe UI",sans-serif;
+  font-size:17px; line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:960px;margin:0 auto;padding:0 28px}
+.narrow{max-width:64ch}
+
+/* ---------- masthead ---------- */
+header.top{
+  border-bottom:1px solid var(--rule);
+  padding:78px 0 44px;
+  background:
+    repeating-linear-gradient(180deg,transparent 0 3px,var(--shadow) 3px 4px);
+}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.18em;
+  text-transform:uppercase; color:var(--amber); margin:0 0 18px;
+}
+h1{
+  font-family:Fraunces,Georgia,serif;
+  font-optical-sizing:auto; font-weight:300;
+  font-size:clamp(46px,8vw,84px); line-height:.98; letter-spacing:-.02em;
+  margin:0 0 22px; text-wrap:balance;
+}
+h1 em{font-style:italic;font-weight:400;color:var(--amber)}
+.standfirst{
+  font-size:20px; line-height:1.55; color:var(--ink-2); max-width:56ch; margin:0;
+}
+.standfirst strong{color:var(--ink);font-weight:600}
+
+/* ---------- stat strip ---------- */
+.stats{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(128px,1fr));
+  gap:1px; background:var(--rule); border-top:1px solid var(--rule);
+  border-bottom:1px solid var(--rule); margin:52px 0 0;
+}
+.stat{background:var(--ground);padding:20px 18px}
+.stat b{
+  display:block; font-family:Fraunces,Georgia,serif; font-weight:400;
+  font-size:30px; line-height:1.1; letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums;
+}
+.stat span{
+  display:block; font-family:"IBM Plex Mono",monospace; font-size:11px;
+  letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); margin-top:5px;
+}
+
+/* ---------- sections ---------- */
+section{padding:64px 0;border-bottom:1px solid var(--rule)}
+section:last-of-type{border-bottom:0}
+h2{
+  font-family:Fraunces,Georgia,serif; font-weight:400;
+  font-size:clamp(28px,4vw,40px); line-height:1.14; letter-spacing:-.015em;
+  margin:0 0 10px; text-wrap:balance;
+}
+.lede{color:var(--ink-2);font-size:18px;margin:0 0 34px;max-width:62ch}
+h3{
+  font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--amber); font-weight:500;
+  margin:38px 0 14px;
+}
+p{margin:0 0 18px;max-width:66ch}
+a{color:var(--cyan)}
+code,.mono{font-family:"IBM Plex Mono",monospace;font-size:.88em}
+code{background:var(--sunk);padding:.12em .38em;border-radius:2px;color:var(--ink)}
+
+/* ---------- machine cards ---------- */
+.machines{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.machine{
+  background:var(--raise); border:1px solid var(--rule);
+  border-top:3px solid var(--cyan); padding:26px 24px;
+}
+.machine.fault{border-top-color:var(--coral)}
+.machine h4{
+  font-family:Fraunces,Georgia,serif;font-weight:400;font-size:25px;
+  margin:0 0 3px;letter-spacing:-.01em;
+}
+.machine .sub{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3);
+  margin:0 0 18px;letter-spacing:.02em;
+}
+.machine dl{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;margin:0;font-size:14px}
+.machine dt{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3);
+  letter-spacing:.06em;text-transform:uppercase;padding-top:2px}
+.machine dd{margin:0;color:var(--ink-2)}
+.pill{
+  display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:11px;
+  letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;
+  border:1px solid currentColor;margin-top:16px;
+}
+.pill.ok{color:var(--green)}
+.pill.bad{color:var(--coral)}
+
+/* ---------- diagram ---------- */
+.diagram{
+  background:var(--sunk);border:1px solid var(--rule);padding:30px 22px;
+  overflow-x:auto;margin:0 0 12px;
+}
+.diagram svg{display:block;margin:0 auto;min-width:600px}
+.dg-label{font-family:"IBM Plex Mono",monospace;font-size:11px;fill:var(--ink-3);letter-spacing:.06em}
+.dg-name{font-family:"IBM Plex Sans",sans-serif;font-size:13px;fill:var(--ink);font-weight:500}
+.dg-box{fill:var(--raise);stroke:var(--rule)}
+.dg-line{stroke:var(--ink-3);fill:none}
+.dg-accent{stroke:var(--amber);fill:none}
+.caption{font-size:14px;color:var(--ink-3);margin:0}
+
+/* ---------- feature table ---------- */
+.tbl{width:100%;border-collapse:collapse;font-size:15px;margin:0 0 8px}
+.tbl th{
+  text-align:left;font-family:"IBM Plex Mono",monospace;font-size:11px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:500;
+  padding:0 14px 10px 0;border-bottom:1px solid var(--rule);
+}
+.tbl td{padding:13px 14px 13px 0;border-bottom:1px solid var(--rule);
+  vertical-align:top;color:var(--ink-2)}
+.tbl td:first-child{color:var(--ink);white-space:nowrap;
+  font-family:"IBM Plex Mono",monospace;font-size:13.5px}
+.tbl tr:last-child td{border-bottom:0}
+
+/* ---------- bug list ---------- */
+.bugs{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.bug{background:var(--ground);padding:22px 24px;display:grid;
+  grid-template-columns:1fr;gap:6px}
+.bug .what{font-weight:600;color:var(--ink);font-size:16px}
+.bug .then{color:var(--ink-2);font-size:15px;margin:0}
+.bug .then b{color:var(--coral);font-weight:600}
+.bug .fix{
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink-3);
+  border-left:2px solid var(--amber);padding-left:12px;margin-top:6px;
+}
+
+/* ---------- isolation ---------- */
+.checks{display:grid;gap:10px;margin:0 0 26px}
+.check{
+  display:grid;grid-template-columns:22px 1fr auto;gap:14px;align-items:baseline;
+  padding:13px 16px;background:var(--raise);border:1px solid var(--rule);
+}
+.check .mark{font-family:"IBM Plex Mono",monospace;font-weight:500}
+.check.pass .mark{color:var(--green)}
+.check.fail .mark{color:var(--coral)}
+.check .name{color:var(--ink);font-size:15px}
+.check .note{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3);
+  text-align:right;letter-spacing:.04em}
+
+.callout{
+  background:var(--amber-soft);border-left:3px solid var(--amber);
+  padding:22px 24px;margin:26px 0;
+}
+.callout p{margin:0;max-width:62ch}
+.callout p + p{margin-top:12px}
+.callout strong{color:var(--ink)}
+
+ul.plain{margin:0 0 18px;padding-left:20px;max-width:66ch;color:var(--ink-2)}
+ul.plain li{margin-bottom:9px}
+ul.plain li strong{color:var(--ink);font-weight:600}
+
+footer{padding:56px 0 80px;color:var(--ink-3);font-size:14px}
+footer p{max-width:66ch}
+
+@media (max-width:640px){
+  body{font-size:16px}
+  header.top{padding:52px 0 34px}
+  section{padding:46px 0}
+  .machine dl{grid-template-columns:1fr;gap:2px 0}
+  .machine dt{margin-top:9px}
+  .check{grid-template-columns:20px 1fr;gap:10px}
+  .check .note{grid-column:2;text-align:left}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <p class="eyebrow">Field report &middot; 1 September 2026</p>
+    <h1>Teaching a 2004 Mac<br><em>new tricks</em></h1>
+    <p class="standfirst">Two obsolete Macintoshes, a single Ethernet cable, and a rule that
+    they must <strong>never touch the internet</strong>. Everything they need, a modern PC
+    fetches and hands them. Built in one session, and honest about what still isn't proven.</p>
+  </div>
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><b>2</b><span>machines</span></div>
+      <div class="stat"><b>8,600</b><span>lines</span></div>
+      <div class="stat"><b>13</b><span>tools</span></div>
+      <div class="stat"><b>10</b><span>bugs found</span></div>
+      <div class="stat"><b>0</b><span>routes out</span></div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>The premise</h2>
+    <p class="lede">An old Mac is a lovely object and a terrible internet client. It has no
+    security patches, a TLS stack no modern site will accept, and a browser from 2008.</p>
+    <div class="narrow">
+      <p>So the machines get no route at all — no gateway, no DNS. They can address exactly
+      one thing: the PC on the other end of the cable. The PC has the internet, the CPU and
+      the disk, and acts as their eyes and hands.</p>
+      <p>That constraint turns out to be the interesting part. Once a modern machine is
+      allowed to do the fetching, decoding and rendering, a great deal of the present-day
+      web becomes usable again on hardware two decades past its service life.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>The two machines</h2>
+    <p class="lede">One works well. One barely works at all, and its fault is the most
+    honest thing in this report.</p>
+    <div class="machines">
+      <div class="machine">
+        <h4>eMac G4</h4>
+        <p class="sub">PowerMac6,4 &middot; 192.168.11.3</p>
+        <dl>
+          <dt>CPU</dt><dd>1.25 GHz PowerPC G4, 1 GB RAM</dd>
+          <dt>OS</dt><dd>Mac OS X 10.5.6 &ldquo;Leopard&rdquo;</dd>
+          <dt>Screen</dt><dd>1024&times;768 CRT</dd>
+          <dt>Access</dt><dd>SSH, key-based, plus its own browser</dd>
+        </dl>
+        <span class="pill ok">Fully working</span>
+      </div>
+      <div class="machine fault">
+        <h4>iMac G3</h4>
+        <p class="sub">Mac OS 9.2 &middot; 192.168.11.2</p>
+        <dl>
+          <dt>OS</dt><dd>Mac OS 9.2 — no shell, no SSH</dd>
+          <dt>Screen</dt><dd>800&times;600 CRT</dd>
+          <dt>Access</dt><dd>browser; a Python 2.3 agent is written but unrun</dd>
+          <dt>Fault</dt><dd>will not start when warm; needs about an hour cold</dd>
+        </dl>
+        <span class="pill bad">Intermittent hardware fault</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>How it fits together</h2>
+    <p class="lede">A long-lived daemon owns the cable. Everything else talks to it.</p>
+    <div class="diagram">
+      <svg viewBox="0 0 720 300" width="720" height="300" role="img"
+           aria-label="Claude Code connects over MCP to a daemon on the PC, which serves two vintage Macs over one Ethernet cable.">
+        <rect x="8" y="18" width="150" height="52" class="dg-box"/>
+        <text x="83" y="41" text-anchor="middle" class="dg-name">Claude Code</text>
+        <text x="83" y="58" text-anchor="middle" class="dg-label">MCP client</text>
+
+        <line x1="158" y1="44" x2="222" y2="44" class="dg-line" stroke-width="1.5"/>
+        <text x="190" y="36" text-anchor="middle" class="dg-label">stdio</text>
+
+        <rect x="222" y="18" width="150" height="52" class="dg-box"/>
+        <text x="297" y="41" text-anchor="middle" class="dg-name">mcp_server.py</text>
+        <text x="297" y="58" text-anchor="middle" class="dg-label">13 tools</text>
+
+        <line x1="297" y1="70" x2="297" y2="104" class="dg-line" stroke-width="1.5"/>
+        <text x="352" y="90" text-anchor="middle" class="dg-label">loopback :9991</text>
+
+        <rect x="180" y="104" width="360" height="60" class="dg-box" stroke-width="2"/>
+        <text x="360" y="130" text-anchor="middle" class="dg-name">g3d &mdash; the daemon</text>
+        <text x="360" y="148" text-anchor="middle" class="dg-label">framebuffers &middot; news &middot; proxy &middot; transcode &middot; files</text>
+
+        <line x1="250" y1="164" x2="250" y2="196" class="dg-accent" stroke-width="1.5"/>
+        <text x="250" y="184" text-anchor="middle" class="dg-label">:9990</text>
+        <line x1="470" y1="164" x2="470" y2="196" class="dg-accent" stroke-width="1.5"/>
+        <text x="470" y="184" text-anchor="middle" class="dg-label">:9980</text>
+
+        <line x1="120" y1="212" x2="600" y2="212" class="dg-accent" stroke-width="2.5"/>
+        <text x="360" y="204" text-anchor="middle" class="dg-label">ONE ETHERNET CABLE &mdash; NO GATEWAY, NO DNS</text>
+
+        <line x1="230" y1="212" x2="230" y2="240" class="dg-line" stroke-width="1.5"/>
+        <line x1="490" y1="212" x2="490" y2="240" class="dg-line" stroke-width="1.5"/>
+
+        <rect x="140" y="240" width="180" height="50" class="dg-box"/>
+        <text x="230" y="262" text-anchor="middle" class="dg-name">eMac G4</text>
+        <text x="230" y="279" text-anchor="middle" class="dg-label">Mac OS X 10.5</text>
+
+        <rect x="400" y="240" width="180" height="50" class="dg-box"/>
+        <text x="490" y="262" text-anchor="middle" class="dg-name">iMac G3</text>
+        <text x="490" y="279" text-anchor="middle" class="dg-label">Mac OS 9.2</text>
+      </svg>
+    </div>
+    <p class="caption">The daemon is deliberately long-lived: the MCP server is a short-lived
+    child process and must not be the thing holding the connection open.</p>
+
+    <div class="callout">
+      <p><strong>It runs on Windows Python, not WSL.</strong> WSL2 sits behind NAT, so a device
+      on the far end of the cable simply cannot reach a listener inside it. That single fact
+      shaped the whole host architecture, and it was worth an hour of checking rather than an
+      afternoon of debugging.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What the old machines get</h2>
+    <p class="lede">A small site, written for Safari 3: CSS2 only, no flexbox, ES3-era
+    JavaScript, and nothing loaded from anywhere but the PC.</p>
+    <table class="tbl">
+      <thead><tr><th>Page</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>/news</td><td>Eight RSS feeds, fetched by the PC on a background thread so a page load never waits on the network. A feed that fails keeps serving its last good copy.</td></tr>
+        <tr><td>/games</td><td>Snake, Breakout, Tetris and Asteroids. Canvas, keyboard, no plugins. Each was written and then adversarially reviewed for syntax a 2008 browser cannot parse.</td></tr>
+        <tr><td>/web</td><td>A sanitising proxy. The PC fetches, strips every script, stylesheet, iframe and remote resource, and rewrites all links and images back through itself.</td></tr>
+        <tr><td>/video</td><td>Paste an address; <span class="mono">yt-dlp</span> fetches it and <span class="mono">ffmpeg</span> re-encodes it to something the G4 can genuinely decode.</td></tr>
+        <tr><td>/claude-screen</td><td>A surface the assistant publishes HTML to. Newest page wins, so it can be left open.</td></tr>
+        <tr><td>/display</td><td>A framebuffer for drawing primitives — the only route that works on the Mac OS 9 machine.</td></tr>
+        <tr><td>/files</td><td>Transfer both ways, with line endings converted per file type and resource-fork limits surfaced rather than silently losing data.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>The codec decision</h3>
+    <p>Everyone reaches for H.264. On a 1.25 GHz G4 it is decodable but expensive.
+    <strong>MPEG-4 Part 2 is what QuickTime on PowerPC was actually built around</strong>
+    and costs a fraction of the CPU, so it is the default at 480&times;360. A ten-minute
+    1080p source converts in 63 seconds and streams at about 816 kbps — trivial over
+    100 Mbit.</p>
+
+    <h3>Why sanitising is a feature, not a limitation</h3>
+    <p>A 2026 website will not render in Safari 3 in any case. Reduced to headings,
+    paragraphs, tables and links, most of the web becomes readable again. Wikipedia arrives
+    as 100 KB of clean HTML from 292 KB raw, with 825 links proxied. Nothing executable
+    reaches the machine, and it still opens no connection to anyone but the PC.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Isolation, verified rather than asserted</h2>
+    <p class="lede">The requirement was a guarantee, so the project checks it instead of
+    claiming it — from both ends.</p>
+
+    <h3>From the Mac</h3>
+    <p><span class="mono">ping 8.8.8.8</span> returns 100% packet loss.
+    <span class="mono">apple.com</span> does not resolve. There is no default gateway and
+    no name server configured, so it cannot address anything off its own subnet.</p>
+
+    <h3>From the PC — six controls, checked read-only</h3>
+    <div class="checks">
+      <div class="check pass"><span class="mark">ok</span><span class="name">IPv4 forwarding</span><span class="note">no interface forwards</span></div>
+      <div class="check pass"><span class="mark">ok</span><span class="name">IPEnableRouter</span><span class="note">absent</span></div>
+      <div class="check pass"><span class="mark">ok</span><span class="name">Internet Connection Sharing</span><span class="note">no adapter shared</span></div>
+      <div class="check pass"><span class="mark">ok</span><span class="name">Network bridge</span><span class="note">none present</span></div>
+      <div class="check pass"><span class="mark">ok</span><span class="name">Routing and Remote Access</span><span class="note">not running</span></div>
+      <div class="check fail"><span class="mark">!!</span><span class="name">WSL2&rsquo;s second IP stack</span><span class="note">forwarding, both networks</span></div>
+    </div>
+
+    <div class="callout">
+      <p><strong>The sixth check exists because the first five were not enough.</strong>
+      An early version of this report would have said &ldquo;all controls pass&rdquo;. They
+      did — and the claim was still incomplete.</p>
+      <p>WSL2 runs its own Linux TCP/IP stack in mirrored networking mode, with one interface
+      on the cable subnet and another on the internet carrying a default route, and
+      <span class="mono">ip_forward=1</span>. It is a second router straddling both networks,
+      and <strong>no Windows-side query can see it.</strong> The Mac having no gateway means
+      nothing was ever actually leaking — but a guarantee with an invisible gap in it is not
+      a guarantee.</p>
+    </div>
+
+    <p>The listeners bind the cable adapter specifically rather than all interfaces, and
+    every inbound connection — agent socket and HTTP alike — is matched against the
+    configured machines by address and refused if unknown. Attempting to fetch from the
+    PC&rsquo;s own cable address correctly returns <span class="mono">403</span>.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Ten bugs, and what each one taught</h2>
+    <p class="lede">Every one of these was found by running the thing, not by reading it.
+    That is the argument for building simulators early.</p>
+    <div class="bugs">
+
+      <div class="bug">
+        <span class="what">Two threads reading one socket</span>
+        <p class="then">The pump stole replies out from under the sender, so <b>every command
+        after the first failed</b> with a misleading &ldquo;connection closed&rdquo;.</p>
+        <p class="fix">One reader, waking per-sequence waiters. Two readers on a socket silently eat each other.</p>
+      </div>
+
+      <div class="bug">
+        <span class="what">Python&nbsp;3 cannot syntax-check Python&nbsp;2.3</span>
+        <p class="then">Python 3.14 parses <span class="mono">except Exception, e</span> as a
+        <b>tuple of exception classes</b> and accepts it silently — passing the code while
+        meaning something entirely different.</p>
+        <p class="fix">A purpose-built lint for the vintage dialect. A modern parser is not a validator for an old one.</p>
+      </div>
+
+      <div class="bug">
+        <span class="what">Pillow dithers by default</span>
+        <p class="then">Flat vector artwork encoded to <b>135 KB instead of 15 KB</b>. A
+        browser reloading that every two seconds exhausted the classic Mac&rsquo;s fixed
+        memory partition and <b>crashed the machine</b>.</p>
+        <p class="fix">Dithering off. An 8&times; reduction, and the crash was self-inflicted rather than the hardware failing.</p>
+      </div>
+
+      <div class="bug">
+        <span class="what">Frame URLs were uncacheable</span>
+        <p class="then">The Mac re-downloaded an unchanged image every cycle.</p>
+        <p class="fix">The counter only advances when the picture changes, so each URL is immutable and cacheable. Steady state fell from 135 KB to <b>373 bytes</b>.</p>
+      </div>
+
+      <div class="bug">
+        <span class="what">Void tags in the sanitiser&rsquo;s drop set</span>
+        <p class="then">Tags like <span class="mono">&lt;link&gt;</span> emit no closing tag,
+        so the drop counter incremented forever and swallowed the document.
+        <b>Wikipedia came back as a two-byte page.</b></p>
+        <p class="fix">Void tags no longer touch the counter. The same fetch is now 100 KB of readable HTML.</p>
+      </div>
+
+      <div class="bug">
+        <span class="what">Chunks decoded before joining</span>
+        <p class="then">A chunk boundary landing inside a percent-escape ate a character —
+        <b>one line vanished from a 59-line listing</b>, silently.</p>
+        <p class="fix">Join raw, decode once. The simulator now splits badly on purpose so this stays covered.</p>
+      </div>
+
+      <div class="bug">
+        <span class="what">Enumerating addresses instead of probing</span>
+        <p class="then"><span class="mono">getaddrinfo</span> never returned the adapter&rsquo;s
+        manual addresses, so binding fell through to all interfaces and the
+        <b>&ldquo;cable adapter only&rdquo; guarantee was silently false</b>.</p>
+        <p class="fix">Ask the OS by attempting the bind. Don&rsquo;t infer a capability you can test directly.</p>
+      </div>
+
+      <div class="bug">
+        <span class="what">An empty quoted string was dropped</span>
+        <p class="then">The far end would have received a command with a missing argument and
+        thrown — on a machine with no debugger.</p>
+        <p class="fix">Caught by a round-trip test between the encoder and the hand-written parser at the other end.</p>
+      </div>
+
+      <div class="bug">
+        <span class="what">Stale status fields</span>
+        <p class="then">Reported a machine&rsquo;s screen size while also reporting it as
+        disconnected — which reads as a live machine.</p>
+        <p class="fix">Report details only while attached.</p>
+      </div>
+
+      <div class="bug">
+        <span class="what">Two keys named <span class="mono">os</span></span>
+        <p class="then">Config said <span class="mono">macosx</span>, the machine reported
+        <span class="mono">10.5.6</span>. Anything parsing the line into a dictionary took
+        whichever came last.</p>
+        <p class="fix">Namespace what the machine tells you separately from what you assumed.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What isn&rsquo;t proven</h2>
+    <p class="lede">The least interesting report is one that only lists successes.</p>
+    <ul class="plain">
+      <li><strong>The Mac OS 9 agent has never run.</strong> It is written against verified
+      Carbon API shapes and lints clean for Python 2.3, but no line of it has executed on
+      the actual machine.</li>
+      <li><strong>Nothing has been seen on a real CRT.</strong> Every page is written for
+      Safari 3 and verified by fetching it — never by looking at it on the glass.</li>
+      <li><strong>Video smoothness on the G4 is untested.</strong> The encode profile is
+      reasoned from what that generation of QuickTime was built for, not measured.</li>
+      <li><strong>The eMac&rsquo;s hardening is written but unapplied</strong> — it needs an
+      admin password. Two gaps stand: a subnet mask a byte too wide, and IPv6 left on
+      automatic. Neither is an active hole.</li>
+      <li><strong>The G3&rsquo;s fault is not confidently diagnosed.</strong> An earlier
+      version of this analysis said &ldquo;thermal capacitors, near certain&rdquo;. That was
+      overconfident: a stuck-but-alive machine is at least as likely, no-chime is weak
+      evidence because chime volume lives in PRAM, and RAM faults on that model are
+      <em>audible</em>.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Built in a single session on 1 September 2026. Twenty-four commits, four test
+    suites, two simulators so the host could be developed with nothing plugged in.
+    The most useful hour was spent checking assumptions about hardware nobody has
+    documented properly in twenty years.</p>
+  </div>
+</footer>
