@@ -153,9 +153,12 @@ class Link:
         return pending
 
     def status(self):
+        # Only report agent details while the agent is actually attached --
+        # stale width/height alongside state=waiting reads as a live machine.
         with self._state:
-            state = "connected" if self._sock is not None else "waiting"
-            out = ["state=%s" % state]
+            if self._sock is None:
+                return ["state=waiting"]
+            out = ["state=connected"]
             for k in ("agent", "width", "height", "depth", "peer"):
                 if k in self.info:
                     out.append("%s=%s" % (k, self.info[k]))
