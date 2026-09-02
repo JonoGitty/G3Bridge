@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1"><title>Probe 2</title>
+<style type="text/css">
+body{background:#000;color:#0f0;font:12px Monaco,monospace;margin:0;padding:0;overflow:hidden}
+#cv{display:block;width:768px;height:576px;margin:0 auto;background:#111}
+#ov{position:absolute;left:128px;top:0;width:768px;height:576px;background:#ffcc66;opacity:0.15}
+</style></head>
+<body>
+<canvas id="cv" width="256" height="192"></canvas>
+<div id="ov"></div>
+<embed id="qt" src="/games/probe/hum.mp3" type="audio/mpeg" width="1" height="1" autoplay="false" loop="true" hidden="true" enablejavascript="true" style="position:absolute;left:0;top:0">
+<embed id="qt2" src="/games/probe/hum.wav" type="audio/wav" width="1" height="1" autoplay="false" loop="true" hidden="true" enablejavascript="true" style="position:absolute;left:0;top:0">
+<script type="text/javascript">
+var R = {};
+function rep(k, v) { R[k] = v; }
+function ping(extra) {
+  var q = []; for (var k in R) { q.push(k + '=' + encodeURIComponent(String(R[k]))); }
+  var img = new Image(); img.src = '/telemetry?probe2=1&' + q.join('&') + (extra ? '&' + extra : '') + '&r=' + new Date().getTime();
+  R = {};
+}
+window.onerror = function (m, u, l) { var i = new Image(); i.src = '/telemetry?probe2=1&onerror=' + encodeURIComponent(m + ' @' + l); return false; };
+var pl = []; try { for (var i = 0; i < navigator.plugins.length; i++) { pl.push(navigator.plugins[i].name); } } catch (e) {}
+rep('plugins', pl.join('|'));
+rep('mime_mpeg', (navigator.mimeTypes && navigator.mimeTypes['audio/mpeg']) ? 'yes' : 'no');
+rep('mime_wav', (navigator.mimeTypes && navigator.mimeTypes['audio/wav']) ? 'yes' : 'no');
+document.onkeydown = function (e) { e = e || window.event; ping('key=' + e.keyCode); };
+setTimeout(function () {
+  var q = document.getElementById('qt');
+  try { rep('qt_play', typeof q.Play); rep('qt_ver', typeof q.GetQuickTimeVersion === 'function' ? q.GetQuickTimeVersion() : 'n/a');
+    rep('qt_plugver', typeof q.GetPluginVersion === 'function' ? q.GetPluginVersion() : 'n/a'); } catch (e) { rep('qt_err', String(e)); }
+  try { if (typeof q.SetVolume === 'function') { q.SetVolume(120); } if (typeof q.Play === 'function') { q.Play(); rep('qt_played', 'yes'); } } catch (e) { rep('qt_playerr', String(e)); }
+  try { var w = document.getElementById('qt2'); rep('wav_play', typeof w.Play); } catch (e) { rep('wav_err', String(e)); }
+  ping('');
+  setTimeout(function () {
+    try { rep('qt_time', q.GetTime()); rep('qt_rate', q.GetRate()); rep('qt_dur', q.GetDuration()); rep('qt_loop', q.GetIsLooping()); rep('qt_status', q.GetPluginStatus()); } catch (e) { rep('qt_err2', String(e)); }
+    try { q.SetVolume(40); rep('qt_vol', q.GetVolume()); } catch (e) {}
+    ping('');
+  }, 2500);
+}, 1500);
+var cv = document.getElementById('cv'); var ctx = cv.getContext('2d');
+var tex = document.createElement('canvas'); tex.width = 64; tex.height = 64; var tc = tex.getContext('2d');
+for (var y = 0; y < 64; y++) { tc.fillStyle = 'rgb(' + (150 + y) + ',' + (120 + y) + ',40)'; tc.fillRect(0, y, 64, 1); }
+var bg = document.createElement('canvas'); bg.width = 256; bg.height = 192; var bc = bg.getContext('2d');
+bc.fillStyle = '#6b5a2a'; bc.fillRect(0, 0, 256, 96); bc.fillStyle = '#3a3320'; bc.fillRect(0, 96, 256, 96);
+var ov = document.getElementById('ov');
+function frame(cols, w, fr) {
+  ctx.drawImage(bg, 0, 0);
+  for (var x = 0; x < cols; x++) { var h = 40 + ((x * 13 + fr) % 140); ctx.drawImage(tex, (x % 64), 0, 1, 64, x * w, 96 - h / 2, w, h); }
+}
+var tests = [[128, 2], [86, 3], [256, 1]]; var ti = 0;
+function runTest() {
+  if (ti >= tests.length) { ping('done=1'); return; }
+  var cols = tests[ti][0], w = tests[ti][1]; var fr = 0; var t0 = new Date().getTime();
+  var timer = setInterval(function () {
+    frame(cols, w, fr); fr++;
+    if (fr % 4 === 0) { ov.style.opacity = (fr % 8 === 0) ? '0.15' : '0.22'; }
+    if (fr === 40) { clearInterval(timer); var el = new Date().getTime() - t0; ping('cols=' + cols + '&w=' + w + '&fps=' + Math.round(40000 / el) + '&ms=' + Math.round(el / 40)); ti++; setTimeout(runTest, 200); }
+  }, 1);
+}
+setTimeout(runTest, 5000);
+var t0 = new Date().getTime(); var n = 0; var it = setInterval(function () { n++; if (n === 50) { clearInterval(it); ping('interval1ms_actual=' + ((new Date().getTime() - t0) / 50)); } }, 1);
+</script></body></html>

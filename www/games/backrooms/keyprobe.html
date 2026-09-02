@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1"><title>KeyProbe</title>
+<style type="text/css">html,body{background:#000;margin:0;padding:0;overflow:hidden}</style></head>
+<body>
+<object id="kp" type="application/x-shockwave-flash" data="/games/backrooms/keyprobe.swf" width="1024" height="600">
+<param name="movie" value="/games/backrooms/keyprobe.swf">
+<param name="allowScriptAccess" value="always">
+<param name="allowFullScreen" value="true">
+<param name="quality" value="low">
+<param name="bgcolor" value="#202020">
+<param name="menu" value="false">
+</object>
+<script type="text/javascript">
+var n = 0;
+var t = setInterval(function () {
+  n++;
+  var o = document.getElementById('kp'); var e = document.embeds && document.embeds.length ? document.embeds[0] : null;
+  var img = new Image(); img.src = '/telemetry?page=1&n=' + n + '&objg3=' + (o ? typeof o.g3 : 'noobj') + '&embg3=' + (e ? typeof e.g3 : 'noemb') + '&r=' + new Date().getTime();
+  if (n >= 6) { clearInterval(t); }
+}, 2000);
+</script>
+</body></html>

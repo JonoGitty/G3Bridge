@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1"><title>Probe</title>
+<style type="text/css">body{background:#000;color:#0f0;font:12px Monaco,monospace;margin:0;padding:10px}</style></head>
+<body><div id="log">probing...</div>
+<canvas id="cv" width="256" height="192"></canvas>
+<canvas id="big" width="1024" height="768" style="width:512px;height:384px"></canvas>
+<script type="text/javascript">
+var R = {};
+function rep(k, v) { R[k] = v; }
+function ping(extra) {
+  var q = []; for (var k in R) { q.push(k + '=' + encodeURIComponent(String(R[k]))); }
+  var img = new Image(); img.src = '/telemetry?probe=1&' + q.join('&') + (extra ? '&' + extra : '') + '&r=' + new Date().getTime();
+}
+window.onerror = function (m, u, l) { var i = new Image(); i.src = '/telemetry?probe=1&onerror=' + encodeURIComponent(m + ' @' + l); return false; };
+try { rep('ua', navigator.userAgent); } catch (e) {}
+rep('canvas', !!document.createElement('canvas').getContext);
+try { var a = document.createElement('audio'); rep('audio', !!a.canPlayType); rep('mp3', a.canPlayType ? a.canPlayType('audio/mpeg') : 'none'); rep('wav', a.canPlayType ? a.canPlayType('audio/wav') : 'none'); rep('m4a', a.canPlayType ? a.canPlayType('audio/mp4') : 'none'); rep('loopattr', ('loop' in a)); } catch (e) { rep('audioerr', String(e)); }
+rep('json', typeof JSON !== 'undefined');
+rep('datenow', typeof Date.now === 'function');
+rep('foreach', typeof [].forEach === 'function');
+rep('indexof', typeof [].indexOf === 'function');
+rep('bind', typeof function () {}.bind === 'function');
+rep('objkeys', typeof Object.keys === 'function');
+rep('localstorage', (function () { try { return typeof localStorage !== 'undefined'; } catch (e) { return 'err'; } })());
+rep('raf', typeof window.requestAnimationFrame === 'function' || typeof window.webkitRequestAnimationFrame === 'function');
+rep('typed', typeof Uint8Array !== 'undefined');
+rep('todataurl', (function () { try { var c = document.createElement('canvas'); c.width = 4; c.height = 4; return c.toDataURL().substring(0, 15); } catch (e) { return 'err ' + e; } })());
+rep('getimagedata', (function () { try { var c = document.createElement('canvas'); c.width = 4; c.height = 4; var d = c.getContext('2d').getImageData(0, 0, 2, 2); return d.data.length; } catch (e) { return 'err ' + e; } })());
+rep('screen', screen.width + 'x' + screen.height);
+rep('inner', window.innerWidth + 'x' + window.innerHeight);
+rep('xhr', typeof XMLHttpRequest !== 'undefined');
+rep('opacity', (function () { var d = document.createElement('div'); d.style.opacity = '0.5'; return d.style.opacity; })());
+var t0 = new Date().getTime(); var s = 0; for (var i = 0; i < 2000000; i++) { s += (i * 7) % 13; } rep('js2M_ms', new Date().getTime() - t0);
+var arr = []; for (i = 0; i < 100000; i++) { arr[i] = i & 255; } t0 = new Date().getTime(); s = 0; for (var k2 = 0; k2 < 20; k2++) { for (i = 0; i < 100000; i++) { s += arr[i]; } } rep('arr2M_ms', new Date().getTime() - t0);
+t0 = new Date().getTime(); s = 0; for (i = 0; i < 200000; i++) { s += Math.floor(Math.sqrt(i) * Math.sin(i)); } rep('math200k_ms', new Date().getTime() - t0);
+var cv = document.getElementById('cv'); var ctx = cv.getContext('2d');
+var tex = document.createElement('canvas'); tex.width = 64; tex.height = 64; var tc = tex.getContext('2d');
+for (var y = 0; y < 64; y++) { tc.fillStyle = 'rgb(' + (150 + y) + ',' + (120 + y) + ',40)'; tc.fillRect(0, y, 64, 1); }
+t0 = new Date().getTime(); var n = 0;
+for (var f = 0; f < 20; f++) { for (var x = 0; x < 256; x++) { var h = 40 + ((x * 13) % 120); ctx.drawImage(tex, (x % 64), 0, 1, 64, x, 96 - h / 2, 1, h); n++; } }
+var dims = new Date().getTime() - t0; rep('drawImage5120_ms', dims);
+t0 = new Date().getTime();
+for (f = 0; f < 20; f++) { for (x = 0; x < 128; x++) { h = 40 + ((x * 13) % 120); ctx.drawImage(tex, (x % 64), 0, 1, 64, x * 2, 96 - h / 2, 2, h); } }
+rep('drawImage2560w2_ms', new Date().getTime() - t0);
+t0 = new Date().getTime();
+for (f = 0; f < 20; f++) { for (x = 0; x < 256; x++) { ctx.fillStyle = '#442'; ctx.fillRect(x, 20, 1, 100); } }
+rep('fillRect5120_ms', new Date().getTime() - t0);
+t0 = new Date().getTime(); ctx.globalAlpha = 0.5;
+for (f = 0; f < 20; f++) { for (x = 0; x < 256; x++) { ctx.fillStyle = '#000'; ctx.fillRect(x, 20, 1, 100); } }
+ctx.globalAlpha = 1; rep('alphaRect5120_ms', new Date().getTime() - t0);
+var big = document.getElementById('big'); var bctx = big.getContext('2d');
+t0 = new Date().getTime(); for (f = 0; f < 10; f++) { bctx.drawImage(cv, 0, 0, 1024, 768); } rep('blit1024_ms_each', (new Date().getTime() - t0) / 10);
+t0 = new Date().getTime(); for (f = 0; f < 10; f++) { bctx.drawImage(cv, 0, 0, 512, 384); } rep('blit512_ms_each', (new Date().getTime() - t0) / 10);
+t0 = new Date().getTime();
+try { var id = ctx.getImageData(0, 0, 256, 192); for (f = 0; f < 5; f++) { ctx.putImageData(id, 0, 0); } rep('putImageData_ms_each', (new Date().getTime() - t0) / 5); } catch (e) { rep('putImageData', 'err'); }
+t0 = new Date().getTime(); for (f = 0; f < 10; f++) { ctx.drawImage(tex, 0, 0, 64, 64, 0, 0, 256, 192); } rep('scaledTex_ms_each', (new Date().getTime() - t0) / 10);
+var au = null;
+try { au = document.createElement('audio'); au.src = '/games/probe/tone.mp3'; au.volume = 0.4;
+  au.addEventListener('playing', function () { ping('audio=playing'); }, false);
+  au.addEventListener('error', function () { ping('audio=error'); }, false);
+  au.addEventListener('ended', function () { ping('audio=ended'); }, false);
+  document.body.appendChild(au); au.play(); rep('audioplay', 'called'); } catch (e) { rep('audioplay', 'err ' + e); }
+document.getElementById('log').innerHTML = 'probe sent';
+ping('');
+var fr = 0; var ft0 = new Date().getTime();
+var timer = setInterval(function () {
+  for (x = 0; x < 256; x++) { h = 40 + ((x * 13 + fr) % 120); ctx.drawImage(tex, (x % 64), 0, 1, 64, x, 96 - h / 2, 1, h); }
+  bctx.drawImage(cv, 0, 0, 1024, 768); fr++;
+  if (fr === 60) { var el = new Date().getTime() - ft0; clearInterval(timer); ping('loopfps=' + Math.round(60000 / el) + '&loop60_ms=' + el); }
+}, 1);
+</script></body></html>

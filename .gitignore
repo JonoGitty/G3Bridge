@@ -12,3 +12,11 @@ host/ssh/id_*
 !host/ssh/*.pub
 # transcoded videos are outputs, not source
 www/video/
+# per-implementer stub trees, regenerated from src; never committed
+stubs/
+# probe and test SWFs; the game SWF itself is tracked
+www/games/backrooms/hello.swf
+www/games/backrooms/bench*.swf
+www/games/backrooms/keyprobe.swf
+www/games/backrooms/embedtest.swf
+run/

@@ -621,6 +621,9 @@ fi
 """
 
 
+RC_QUEUES = {}          # device name -> [command lines] for /rc
+
+
 def _now_for_macs():
     """(now, zone name, note). The zone comes from config.TIMEZONE; if the PC
     has no zone database for it, the PC's own local time is used and said so."""
@@ -877,7 +880,9 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        if cacheable:
+        if extra and "Cache-Control" in extra:
+            pass                          # the caller chose its own caching
+        elif cacheable:
             # A frame URL carries a counter that only advances when the picture
             # actually changes, so each URL is immutable and can be cached hard.
             # This is the difference between the Mac re-downloading and
@@ -1247,13 +1252,51 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path.startswith("/games/"):
-            name = os.path.basename(path[len("/games/"):])
-            fn = os.path.join(GAMES_DIR, name)
-            if not name.endswith(".html") or not os.path.isfile(fn):
-                self._send(404, "text/plain", "no such game: %s" % name)
+            rel = os.path.normpath(path[len("/games/"):]).replace("\\", "/")
+            if rel.startswith("..") or rel.startswith("/") or ":" in rel:
+                self._send(404, "text/plain", "no")
                 return
+            fn = os.path.join(GAMES_DIR, rel)
+            if not os.path.isfile(fn):
+                self._send(404, "text/plain", "no such game file: %s" % rel)
+                return
+            import mimetypes
+            ctype = mimetypes.guess_type(fn)[0] or "application/octet-stream"
+            if fn.endswith(".js"):
+                ctype = "application/x-javascript"
+            elif fn.endswith(".mp3"):
+                ctype = "audio/mpeg"
             with open(fn, "rb") as f:
-                self._send(200, "text/html", f.read())
+                data = f.read()
+            if fn.endswith(".html") or fn.endswith(".swf"):
+                # pages and the SWF itself: never cached, so a rebuild is what
+                # the Mac gets on the next load
+                self._send(200, ctype, data)
+            else:
+                # assets: short cache so a game can be iterated on without the
+                # Mac holding a stale copy for a year
+                self._send(200, ctype, data, extra={"Cache-Control": "max-age=120"})
+            return
+
+        if path == "/rc":
+            # Remote control for a game under test: the SWF polls this and gets
+            # whatever the PC queued (one command per line), then the queue clears.
+            q = RC_QUEUES.get(dev.name) or []
+            RC_QUEUES[dev.name] = []
+            self._send(200, "text/plain", "\n".join(q))
+            return
+
+        if path == "/telemetry":
+            # A game or probe page on the Mac reports back with an <img> ping.
+            from urllib.parse import unquote_plus
+            msg = unquote_plus(query)[:4000]
+            log("%s: telemetry %s" % (dev.name, msg[:300]))
+            try:
+                with open(os.path.join(RUN_DIR, "telemetry.log"), "a", encoding="utf-8") as f:
+                    f.write("%s %s %s\n" % (time.strftime("%H:%M:%S"), dev.name, msg))
+            except OSError:
+                pass
+            self._send(200, "image/gif", webproxy.BLANK_GIF)
             return
 
         if path in ("/display", "/display.html"):
@@ -1495,6 +1538,54 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
                 length = 0
             raw = self.rfile.read(length) if length > 0 else b""
             self._serve_form(dev, parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True))
+            return
+        if self.path.split("?", 1)[0] == "/rc":
+            # The PC (loopback) queues commands for a device: body = lines, ?dev=name
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            body = (self.rfile.read(length) if length > 0 else b"").decode("utf-8", "replace")
+            target = _q(self.path.split("?", 1)[1] if "?" in self.path else "", "dev") or "emac"
+            RC_QUEUES.setdefault(target, []).extend([l for l in body.splitlines() if l.strip()])
+            self._send(200, "text/plain", "queued %d for %s" % (len(body.splitlines()), target))
+            return
+        if self.path.split("?", 1)[0] == "/snap":
+            import base64
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            raw = self.rfile.read(length) if length > 0 else b""
+            if raw[:4] == b"\x89PNG":
+                # Flash posts the PNG bytes as-is
+                n = int(time.time())
+                fn = os.path.join(RUN_DIR, "snap_%s_%d.png" % (dev.name, n))
+                with open(fn, "wb") as f:
+                    f.write(raw)
+                log("%s: snapshot %d bytes -> %s" % (dev.name, len(raw), os.path.basename(fn)))
+                self._send(200, "text/plain", "ok")
+                return
+            body = raw.decode("ascii", "replace")
+            if body.startswith("data="):
+                body = body[5:]
+            from urllib.parse import unquote_plus
+            body = unquote_plus(body)
+            if "," in body[:40]:
+                body = body.split(",", 1)[1]
+            try:
+                png = base64.b64decode(body)
+            except Exception:
+                png = b""
+            n = int(time.time())
+            fn = os.path.join(RUN_DIR, "snap_%s_%d.png" % (dev.name, n))
+            if png[:4] == b"\x89PNG":
+                with open(fn, "wb") as f:
+                    f.write(png)
+                log("%s: snapshot %d bytes -> %s" % (dev.name, len(png), os.path.basename(fn)))
+            else:
+                log("%s: snapshot was not a PNG (%d bytes)" % (dev.name, len(raw)))
+            self._send(200, "text/plain", "ok")
             return
         if self.path.split("?", 1)[0] == "/result":
             # Accept whatever the applet sends -- raw text, a PUT body, or a

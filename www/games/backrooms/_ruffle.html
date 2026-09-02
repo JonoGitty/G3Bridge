@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Ruffle harness</title>
+<script src="https://cdn.jsdelivr.net/npm/@ruffle-rs/ruffle"></script>
+<style>body{margin:0;background:#000}#c{width:1024px;height:768px}</style></head>
+<body><div id="c"></div>
+<script>
+window.RufflePlayer = window.RufflePlayer || {};
+window.RufflePlayer.config = { autoplay: "on", unmuteOverlay: "hidden", letterbox: "off", logLevel: "info",
+  allowScriptAccess: true, warnOnUnsupportedContent: false, splashScreen: false, backgroundColor: "#000000" };
+window.addEventListener("load", function () {
+  var swf = new URLSearchParams(location.search).get("swf") || "/games/backrooms/backrooms.swf";
+  var ruffle = window.RufflePlayer.newest();
+  var player = ruffle.createPlayer();
+  player.style.width = "1024px"; player.style.height = "768px";
+  document.getElementById("c").appendChild(player);
+  player.ruffle().load({ url: swf, allowScriptAccess: true }).then(function () { window.__loaded = true; });
+  window.__player = player;
+});
+</script></body></html>
