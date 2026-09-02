@@ -35,12 +35,13 @@ from anywhere but the PC.
 |---|---|
 | `/news` | 8 RSS feeds, fetched by the PC on a background thread |
 | `/games` | Snake, Breakout, Tetris, Asteroids — canvas, keyboard, no plugins |
-| `/web` | a **sanitising proxy**: the PC fetches, strips every script, stylesheet, iframe and remote resource, rewrites all links back through itself |
+| `/web` | the **web translation layer**: the PC fetches a page and rewrites it for Safari 3. Forms submit through the PC (GET and POST, with a cookie jar, so logins persist); images are re-encoded (WebP, AVIF and SVG become JPEG/PNG, nothing wider than 900px) and cached; navigation folds into a strip of links; downloads stream through; YouTube goes to `/video`. Four views: **full**, **reader**, **rendered** (a headless Chromium on the PC runs the page's JavaScript first) and **picture** (a screenshot with every link as a clickable image map). Nothing executable gets through |
 | `/video` | paste an address; `yt-dlp` fetches it and `ffmpeg` re-encodes it to MPEG-4 Part 2 at 480×360, which is what a G4 can actually decode |
 | `/claude-screen` | a surface Claude publishes HTML to |
 | `/display` | a framebuffer Claude draws primitives on |
 | `/files`, `/upload` | file transfer both ways |
 | `/setup` | connect and harden a newly plugged-in machine |
+| `/time` | the PC's clock, and a one-line command that sets the Mac's clock and time zone from it (the Macs have no time server) |
 
 ## What Claude gets
 
@@ -67,6 +68,12 @@ on the far end of the cable cannot reach a listener inside it. Windows Defender
 already permits `C:\Python310\python.exe` inbound on the active profile, and
 Windows Python has Pillow; WSL's Python has no pip at all.
 
+The web layer needs `requests`, `lxml` and Pillow. The rendered and picture
+views also need Playwright (`pip install playwright && playwright install
+chromium`); without it those two views are simply offered as unavailable.
+Cookies for sites you log into through `/web` live in `run/cookies.txt`, and
+converted images in `run/webcache/`. Both are outside git and safe to delete.
+
 ## Isolation
 
 The vintage machines must never reach the internet. That is enforced in two
@@ -87,7 +94,9 @@ and refused if unknown.
 
 `/web` and `/video` are a deliberate, mediated loosening: internet *content*
 reaches the old machines, but they still open no connection to anyone but the PC,
-and nothing executable survives the sanitiser.
+and nothing executable survives the translator. When a page needs JavaScript,
+that JavaScript runs in a headless Chromium **on the PC**; the Mac gets the HTML
+that resulted.
 
 ## Layout
 
@@ -99,7 +108,8 @@ and nothing executable survives the sanitiser.
 | `host/devices.py` | per-machine state: canvas, framebuffer, link, queue |
 | `host/raster.py` | software rasteriser, shared by the mirror and the simulator |
 | `host/pages.py` | all HTML, written for a 2008 browser |
-| `host/webproxy.py` | the sanitising proxy |
+| `host/webproxy.py` | the web translation layer: fetch, translate, forms, images, downloads, picture mode |
+| `host/render.py` | one thread owning a headless Chromium, for rendered and picture views and for SVG |
 | `host/video.py` | fetch and transcode |
 | `host/news.py` | RSS on a background thread |
 | `host/isolation.py` | the six network controls |

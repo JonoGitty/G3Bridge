@@ -95,7 +95,7 @@ def index_page(dev, games, news_ready):
          "Collect files the PC has put out for you, or send one back with "
          "<a href=\"/upload\">Upload</a>."),
         ("/setup", "Setup",
-         "Connect this machine to the PC, and lock down its networking."),
+         "Connect this machine to the PC, lock down its networking, and set its <a href=\"/time\">clock</a>."),
         ("/boot", "Bootstrap",
          "The agent and instructions, mainly for the Mac OS 9 machine."),
     ]
@@ -272,25 +272,113 @@ SEARCH_BOX = ('<form action="/web" method="get">'
               '</form>')
 
 
-def web_home(recent=None):
+WEB_CSS = """
+ .reader { max-width:56em; }
+ .reader h1,.reader h2,.reader h3,.reader h4 { color:#e6edf3; font-weight:normal;
+     text-transform:none; letter-spacing:0; border:0; margin:22px 0 8px; }
+ .reader h1 { font-size:22px; } .reader h2 { font-size:18px; } .reader h3 { font-size:15px; }
+ .reader h4 { font-size:14px; font-weight:bold; }
+ .reader p, .reader li, .reader dd, .reader dt { color:#c3cede; font-size:14px; }
+ .reader img { max-width:100%; border:1px solid #2b3550; }
+ .reader table { border-collapse:collapse; margin:12px 0; }
+ .reader td,.reader th { border:1px solid #2b3550; padding:5px 9px; font-size:13px;
+     vertical-align:top; }
+ .reader pre { background:#0a0d15; border:1px solid #2b3550; padding:10px;
+     overflow:auto; font:12px Monaco,"Courier New",monospace; }
+ .reader blockquote { border-left:3px solid #2b3550; margin:10px 0; padding-left:14px;
+     color:#8b9bb4; }
+ .reader input, .reader select, .reader textarea { background:#0a0d15; color:#e6edf3;
+     border:1px solid #3a4a6b; padding:4px 6px; font:13px "Lucida Grande",Geneva,sans-serif;
+     margin:2px 0; }
+ .reader input[type=submit] { background:#1d2740; padding:4px 12px; cursor:pointer; }
+ .reader form { margin:8px 0; }
+ .reader fieldset { border:1px solid #2b3550; padding:8px 12px; margin:10px 0; }
+ .reader legend { color:#ffc23d; font-size:12px; }
+ .strip { font-size:12px; color:#4d5b73; line-height:1.9; margin:0 0 12px; padding:6px 10px;
+     background:#0f131c; border:1px solid #1f2738; }
+ .strip a { color:#9fb3cc; }
+ .embed { border:1px dashed #3a4a6b; padding:8px 12px; margin:10px 0; color:#8b9bb4;
+     font-size:13px; }
+ .webhead { border-bottom:1px solid #2b3550; padding-bottom:10px; margin-bottom:18px; }
+ .webhead h1 { font-size:21px; margin:8px 0 2px; }
+ .webhead .sub { margin:0; }
+ .webhead .sub a.on { color:#ffc23d; font-weight:bold; }
+ .addr { background:#0a0d15; color:#e6edf3; border:1px solid #2b3550; padding:5px 8px;
+     font:13px Monaco,"Courier New",monospace; width:640px; }
+ .go { background:#1d2740; color:#e6edf3; border:1px solid #3a4a6b; padding:5px 12px;
+     font:13px "Lucida Grande",sans-serif; }
+ .note { color:#8b9bb4; font-size:12px; margin:4px 0; }
+ .pic { display:block; border:0; margin:0 0 2px; }
+"""
+
+
+def _web_shell(title, body):
+    page = _shell(title, "/web", body)
+    return page.replace("</style>", WEB_CSS + "</style>")
+
+
+def _addr(url, view=""):
+    import urllib.parse as _u
+    hidden = '<input type="hidden" name="view" value="%s">' % view if view else ""
+    return ('<form action="/web" method="get" style="margin:0">%s'
+            '<input type="text" name="u" value="%s" class="addr"> '
+            '<input type="submit" value="Go" class="go"> '
+            '<a href="/web" style="font-size:12px;margin-left:10px">search</a></form>'
+            % (hidden, html.escape(url, quote=True)))
+
+
+def _views(url, current, can_render):
+    import urllib.parse as _u
+    q = _u.quote(url, safe="")
+    items = [("full", "Full"), ("reader", "Reader")]
+    if can_render:
+        items += [("render", "Rendered"), ("pic", "Picture")]
+    out = []
+    for key, label in items:
+        cls = ' class="on"' if key == current else ""
+        href = "/web?view=%s&u=%s" % (key, q)
+        out.append('<a href="%s"%s>%s</a>' % (href, cls, label))
+    out.append('<a href="/web?d=%s">Download</a>' % q)
+    return " | ".join(out)
+
+
+def web_home(recent=None, can_render=False):
     body = ('<h1>Web</h1><p class="sub">This machine has no route to the internet. '
-            'The PC fetches the page, strips out every script, stylesheet and '
-            'remote resource, and sends back plain readable HTML.</p>')
+            'The PC fetches each page, translates it for this browser, and sends it '
+            'down the cable. Forms, logins, images and downloads work; nothing '
+            'executable gets through.</p>')
     body += SEARCH_BOX % ""
     body += ('<div class="card" style="margin-top:22px"><p>Or go straight to an address:</p>'
-             '<form action="/web" method="get">'
-             '<input type="text" name="u" value="https://" size="52" '
-             'style="background:#0a0d15;color:#e6edf3;border:1px solid #2b3550;padding:7px 9px">'
-             ' <input type="submit" value="Open"></form></div>')
+             + _addr("https://") + '</div>')
+    if recent:
+        body += '<h2>Recent</h2>'
+        import urllib.parse as _u
+        for title, url, when, engine in recent:
+            body += ('<div class="item"><div class="h"><a href="/web?u=%s">%s</a></div>'
+                     '<div class="w">%s &middot; %s</div></div>'
+                     % (_u.quote(url, safe=""), html.escape(title or url), html.escape(url[:96]), engine))
     body += ('<h2>Try</h2><p>'
             + " &nbsp;&middot;&nbsp; ".join(
                 '<a href="/web?u=%s">%s</a>' % (u, n) for n, u in [
                     ("Wikipedia", "https%3A//en.wikipedia.org/wiki/Main_Page"),
                     ("BBC News", "https%3A//www.bbc.co.uk/news"),
                     ("Hacker News", "https%3A//news.ycombinator.com/"),
+                    ("Macintosh Garden", "https%3A//macintoshgarden.org/"),
+                    ("Reddit", "https%3A//old.reddit.com/"),
                     ("Low-tech Magazine", "https%3A//solar.lowtechmagazine.com/"),
                 ]) + '</p>')
-    return _shell("Web", "/web", body)
+    body += ('<h2>Views</h2><p class="note"><b>Full</b> keeps everything, with site '
+             'navigation folded into a strip of links. <b>Reader</b> keeps only the main '
+             'text. ')
+    if can_render:
+        body += ('<b>Rendered</b> has the PC run the page&rsquo;s JavaScript first, for '
+                 'sites that arrive empty. <b>Picture</b> sends a screenshot with every '
+                 'link clickable, for sites that will not translate at all. ')
+    else:
+        body += ('Rendered and Picture views need Playwright on the PC and are off. ')
+    body += ('Any file &mdash; a PDF, a .sit, an MP3 &mdash; downloads through the PC '
+             'to this Mac. YouTube addresses go to <a href="/video">Video</a>.</p>')
+    return _web_shell("Web", body)
 
 
 def web_results(query, results, error=None):
@@ -309,34 +397,64 @@ def web_results(query, results, error=None):
             body += '<div class="s">%s</div>' % html.escape(snippet)
         body += '</div>'
     body += '</div>'
-    return _shell("Search: " + query, "/web", body)
+    return _web_shell("Search: " + query, body)
 
 
-def web_page(title, content, final_url, elapsed):
+def web_page(page, can_render=False):
+    stats = "%d links" % page.links
+    if page.images:
+        stats += ", %d images" % page.images
+    if page.forms:
+        stats += ", %d form%s" % (page.forms, "" if page.forms == 1 else "s")
+    head = ('<div class="webhead">' + _addr(page.url, page.view if page.view != "full" else "")
+            + '<h1>%s</h1><p class="sub">%s by the PC in %.1fs &middot; %s &middot; View: %s</p>'
+            % (html.escape(page.title[:120]), page.engine, page.elapsed, stats,
+               _views(page.url, page.view, can_render)))
+    for n in page.notes:
+        head += '<p class="warn" style="margin:4px 0 0">%s</p>' % html.escape(n)
+    head += '</div>'
+    body = head + '<div class="reader">' + page.body + '</div>'
+    return _web_shell(page.title[:60] or "Web", body)
+
+
+def web_file(page):
     import urllib.parse as _u
-    body = ('<div style="border-bottom:1px solid #2b3550;padding-bottom:10px;margin-bottom:20px">'
-            '<h1 style="font-size:21px;margin-bottom:2px">%s</h1>'
-            '<p class="sub" style="margin:0">%s &middot; fetched by the PC in %.1fs '
-            '&middot; scripts and remote content removed &middot; '
-            '<a href="/web">new search</a></p></div>'
-            % (html.escape(title[:120]), html.escape(final_url[:110]), elapsed))
-    body += '<div class="reader">' + content + '</div>'
-    extra = """
- .reader { max-width:52em; }
- .reader h1,.reader h2,.reader h3 { color:#e6edf3; font-weight:normal;
-     text-transform:none; letter-spacing:0; border:0; margin:22px 0 8px; }
- .reader h1 { font-size:22px; } .reader h2 { font-size:18px; } .reader h3 { font-size:15px; }
- .reader p, .reader li { color:#c3cede; font-size:14px; }
- .reader img { max-width:100%; border:1px solid #2b3550; }
- .reader table { border-collapse:collapse; margin:12px 0; }
- .reader td,.reader th { border:1px solid #2b3550; padding:5px 9px; font-size:13px; }
- .reader pre { background:#0a0d15; border:1px solid #2b3550; padding:10px;
-     overflow:auto; font:12px Monaco,"Courier New",monospace; }
- .reader blockquote { border-left:3px solid #2b3550; margin:10px 0; padding-left:14px;
-     color:#8b9bb4; }
-"""
-    page = _shell(title[:60], "/web", body)
-    return page.replace("</style>", extra + "</style>")
+    q = _u.quote(page.url, safe="")
+    size = _size(page.size) if page.size >= 0 else "size unknown"
+    body = ('<div class="webhead">' + _addr(page.url)
+            + '<h1>%s</h1><p class="sub">%s &middot; %s</p></div>'
+            % (html.escape(page.title[:120]), html.escape(page.ctype), size))
+    if page.kind == "image":
+        body += ('<div class="reader"><img src="/web?i=%s" alt=""></div>' % q)
+        body += ('<p class="note">Shown re-encoded for this browser. '
+                 '<a href="/web?d=%s">Download the original</a> instead.</p>' % q)
+    else:
+        body += ('<div class="card"><h3><a href="/web?d=%s">Download it to this Mac</a></h3>'
+                 '<p>This address is a file, not a page. The PC will fetch it and stream it '
+                 'down the cable; Safari saves it to your Downloads folder. '
+                 'Limit %d MB.</p></div>' % (q, 64))
+    return _web_shell(page.title[:60] or "File", body)
+
+
+def web_picture(meta, can_render=True):
+    import urllib.parse as _u
+    body = ('<div class="webhead">' + _addr(meta["url"], "pic")
+            + '<h1>%s</h1><p class="sub">screenshot by the PC, %dx%d, %d strips &middot; '
+              'every link is clickable &middot; View: %s</p></div>'
+            % (html.escape(meta["title"][:120]), meta["w"], meta["h"], len(meta["strips"]),
+               _views(meta["url"], "pic", can_render)))
+    for s in meta["strips"]:
+        n = s["n"]
+        body += ('<img src="/web?p=%s&n=%d" width="%d" height="%d" usemap="#m%d" class="pic" alt="">'
+                 % (meta["id"], n, s["w"], s["h"], n))
+        body += '<map name="m%d">' % n
+        for (x1, y1, x2, y2, href, label) in s["areas"]:
+            import webproxy as _wp
+            body += ('<area shape="rect" coords="%d,%d,%d,%d" href="%s" alt="%s" title="%s">'
+                     % (x1, y1, x2, y2, html.escape(_wp.link_for(href, "pic"), quote=True),
+                        html.escape(label, quote=True), html.escape(label, quote=True)))
+        body += '</map>'
+    return _web_shell(meta["title"][:60] or "Picture", body)
 
 
 def web_error(what, detail):
@@ -344,7 +462,34 @@ def web_error(what, detail):
             + '<div class="card" style="margin-top:20px"><p class="warn">%s</p>'
               '<p style="margin-top:8px">%s</p></div>'
             % (html.escape(what), html.escape(detail[:300])))
-    return _shell("Web", "/web", body)
+    return _web_shell("Web", body)
+
+
+# ---------------------------------------------------------------- clock
+def time_page(now, tz, note, pc, port):
+    body = ('<h1>Clock</h1><p class="sub">The PC&rsquo;s time, refreshed every 20 seconds. '
+            'This machine cannot reach a time server, so this is how it finds out.</p>'
+            '<div style="font:bold 72px Monaco,\'Courier New\',monospace;color:#7dff9b;'
+            'letter-spacing:2px;margin:10px 0 0">%s</div>'
+            '<div style="font-size:22px;color:#e6edf3;margin:2px 0 6px">%s</div>'
+            '<p class="sub">%s%s</p>'
+            % (now.strftime("%H:%M:%S"), now.strftime("%A %d %B %Y"), html.escape(tz),
+               (" &middot; " + html.escape(note)) if note else ""))
+    body += ('<h2>Set this Mac&rsquo;s clock from the PC (Mac OS X)</h2>'
+             '<div class="cmd">curl -s %s:%d/time?f=sh | sudo sh</div>'
+             '<p class="note">Sets the time zone to %s and the time to the second, then '
+             'prints the result. Needs the account password for <tt>sudo</tt>; the PC '
+             'never sees it.</p>' % (pc, port, html.escape(tz)))
+    body += ('<h2>Mac OS 9</h2><p class="note">No shell there. Open the Date &amp; Time '
+             'control panel and copy the clock above.</p>')
+    body += ('<h2>Raw</h2><p class="note">'
+             '<a href="/time?f=date">/time?f=date</a> &rarr; <tt>%s</tt> (what <tt>date</tt> takes) &middot; '
+             '<a href="/time?f=iso">/time?f=iso</a> &rarr; <tt>%s</tt> &middot; '
+             '<a href="/time?f=unix">/time?f=unix</a> &rarr; seconds since 1970 &middot; '
+             '<a href="/time?f=sh">/time?f=sh</a> &rarr; the script</p>'
+             % (now.strftime("%m%d%H%M%Y.%S"), now.strftime("%Y-%m-%d %H:%M:%S")))
+    page = _shell("Clock", "/setup", body)
+    return page.replace("<head>", '<head><meta http-equiv="refresh" content="20">', 1)
 
 
 # ---------------------------------------------------------------- video

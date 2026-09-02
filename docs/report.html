@@ -360,11 +360,12 @@ footer p{max-width:66ch}
       <tbody>
         <tr><td>/news</td><td>Eight RSS feeds, fetched by the PC on a background thread so a page load never waits on the network. A feed that fails keeps serving its last good copy.</td></tr>
         <tr><td>/games</td><td>Snake, Breakout, Tetris and Asteroids. Canvas, keyboard, no plugins. Each was written and then adversarially reviewed for syntax a 2008 browser cannot parse.</td></tr>
-        <tr><td>/web</td><td>A sanitising proxy. The PC fetches, strips every script, stylesheet, iframe and remote resource, and rewrites all links and images back through itself.</td></tr>
+        <tr><td>/web</td><td>The web translation layer. The PC fetches a page and rewrites it for Safari 3 &mdash; forms, images, downloads and all. Four views; see below.</td></tr>
         <tr><td>/video</td><td>Paste an address; <span class="mono">yt-dlp</span> fetches it and <span class="mono">ffmpeg</span> re-encodes it to something the G4 can genuinely decode.</td></tr>
         <tr><td>/claude-screen</td><td>A surface the assistant publishes HTML to. Newest page wins, so it can be left open.</td></tr>
         <tr><td>/display</td><td>A framebuffer for drawing primitives — the only route that works on the Mac OS 9 machine.</td></tr>
         <tr><td>/files</td><td>Transfer both ways, with line endings converted per file type and resource-fork limits surfaced rather than silently losing data.</td></tr>
+        <tr><td>/time</td><td>The PC&rsquo;s clock, and a one-line command that sets the Mac&rsquo;s zone and time from it. The Macs cannot reach a time server; the eMac&rsquo;s PRAM battery is flat.</td></tr>
       </tbody>
     </table>
 
@@ -375,11 +376,37 @@ footer p{max-width:66ch}
     1080p source converts in 63 seconds and streams at about 816 kbps — trivial over
     100 Mbit.</p>
 
-    <h3>Why sanitising is a feature, not a limitation</h3>
-    <p>A 2026 website will not render in Safari 3 in any case. Reduced to headings,
-    paragraphs, tables and links, most of the web becomes readable again. Wikipedia arrives
-    as 100 KB of clean HTML from 292 KB raw, with 825 links proxied. Nothing executable
-    reaches the machine, and it still opens no connection to anyone but the PC.</p>
+    <h3>The web translation layer</h3>
+    <p>A 2026 website will not render in Safari 3 in any case, so the first version of
+    <span class="mono">/web</span> simply stripped pages to headings, paragraphs and links.
+    Readable, but not <em>usable</em>. The second version translates instead:</p>
+    <ul class="plain">
+      <li><strong>Forms work.</strong> A site&rsquo;s own search box or login form is rewritten to
+      submit through the PC, GET or POST, with a cookie jar on disk, so a session survives from
+      one page to the next. This is most of what &ldquo;functional&rdquo; turns out to mean.</li>
+      <li><strong>Images are re-encoded.</strong> Safari 3 cannot decode WebP, AVIF or SVG, and a
+      4000-pixel JPEG costs a G4 seconds, so every image becomes JPEG or PNG no wider than 900px,
+      cached on the PC. <span class="mono">srcset</span>, lazy-loading attributes and
+      <span class="mono">&lt;noscript&gt;</span> fallbacks are resolved first.</li>
+      <li><strong>Navigation folds rather than vanishes.</strong> Header, nav, footer and aside
+      collapse into a strip of links, so a site can still be moved around without its menus
+      filling a 1024&times;768 screen.</li>
+      <li><strong>Four views.</strong> <em>Full</em>, <em>reader</em> (main text only),
+      <em>rendered</em> &mdash; a headless Chromium <em>on the PC</em> runs the page&rsquo;s
+      JavaScript and hands over the DOM that results, chosen automatically when a page arrives
+      nearly empty &mdash; and <em>picture</em>: a screenshot sliced into JPEG strips, with every
+      link&rsquo;s bounding box as an HTML 3.2 image map. A single-page app the old browser could
+      never run becomes something it can click on.</li>
+      <li><strong>Files come through.</strong> A <span class="mono">.sit</span> on Macintosh
+      Garden, a PDF, an MP3: each streams through the PC to the Mac&rsquo;s Downloads folder.
+      YouTube addresses go straight to <span class="mono">/video</span>.</li>
+    </ul>
+    <p>Measured through the daemon: BBC News in 0.1 s with 52 images, Wikipedia with both of
+    its search boxes working, Macintosh Garden with 34 download links, Reddit rendered on the
+    PC in about ten seconds. The translator is walked iteratively rather than recursively,
+    after libxml2&rsquo;s 256-level nesting cap turned out to be silently discarding the tail
+    of pages built from unclosed tags. Nothing executable reaches the Mac, and it still opens
+    no connection to anyone but the PC.</p>
   </div>
 </section>
 
@@ -517,7 +544,9 @@ footer p{max-width:66ch}
       Carbon API shapes and lints clean for Python 2.3, but no line of it has executed on
       the actual machine.</li>
       <li><strong>Nothing has been seen on a real CRT.</strong> Every page is written for
-      Safari 3 and verified by fetching it — never by looking at it on the glass.</li>
+      Safari 3 and verified by fetching it — never by looking at it on the glass. That includes
+      the translated forms and the picture view&rsquo;s image maps: both are 1990s HTML and
+      should work, but &ldquo;should&rdquo; is the word.</li>
       <li><strong>Video smoothness on the G4 is untested.</strong> The encode profile is
       reasoned from what that generation of QuickTime was built for, not measured.</li>
       <li><strong>The eMac&rsquo;s hardening is written but unapplied</strong> — it needs an
@@ -534,8 +563,9 @@ footer p{max-width:66ch}
 
 <footer>
   <div class="wrap">
-    <p>Built in a single session on 1 September 2026. Twenty-four commits, four test
-    suites, two simulators so the host could be developed with nothing plugged in.
+    <p>Built on 1 and 2 September 2026. Five test suites, two simulators so the host
+    could be developed with nothing plugged in, a public repository at
+    <span class="mono">github.com/JonoGitty/G3Bridge</span>.
     The most useful hour was spent checking assumptions about hardware nobody has
     documented properly in twenty years.</p>
   </div>

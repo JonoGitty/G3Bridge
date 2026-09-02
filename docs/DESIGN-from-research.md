@@ -736,7 +736,7 @@ FIRST THING TO DO ON THE MACHINE, before writing any bridge code: confirm Carbon
           "The actual OS version on the machine — '9.7' is not a real release. Need Apple menu > About This Computer. Determines bundled IE version (5.0 vs 5.1) and USB Mass Storage Support version (1.3.5-era vs 2.1.1), though not the plan itself.",
           "Whether IE 5 is actually still present on this particular iMac and at what version, and whether StuffIt Expander is still in Applications (Mac OS 9):Internet:Internet Utilities:Aladdin Folder — a previous owner could have trashed either. Needs eyes on the machine.",
           "Whether URL Access Scripting is present in that machine's System Folder:Scripting Additions. Sourced as present from Mac OS 8.6 and through Mac OS X 10.6, but its presence in a stock 9.1/9.2.2 install was not directly confirmed by a source. Phase 4 depends on it; Phases 1-3 do not.",
-          "Whether the iMac G3 has working Ethernet on the same subnet as the PC. The PC is on WiFi (GompelsNet, 192.168.1.103). If the router does client isolation between WiFi and wired, or if the iMac ends up on a different subnet, nothing above works. Untestable from here.",
+          "Whether the iMac G3 has working Ethernet on the same subnet as the PC. The PC is on WiFi (<home-wifi>, 192.168.1.103). If the router does client isolation between WiFi and wired, or if the iMac ends up on a different subnet, nothing above works. Untestable from here.",
           "Whether inbound LAN traffic actually reaches a WSL-bound listener on this box once a Hyper-V rule is added — mirrored mode plus DefaultInboundAction=Block was confirmed, but end-to-end reachability needs a second device on the LAN to test. Avoided entirely by the recommendation to host the server on Windows.",
           "Whether any specific USB stick the user owns will enumerate on OS 9. Retro experience says modern large/USB3 sticks frequently do not, but this is per-device and can only be tested physically.",
           "Whether StuffIt Expander 5.5 specifically handles .zip and .gz without DropStuff/Expander Enhancer. One secondary source (WinWorld/OldApps) says yes; the historical pattern says non-Mac formats needed Expander Enhancer. Do not depend on it — .hqx and .bin are confirmed either way.",
@@ -751,7 +751,7 @@ CONCRETE BOOTSTRAP SEQUENCE
 
 Phase 0 — prove the wire (do this first, it is where this specific machine will bite).
 1. On the Mac: Control Panels > TCP/IP, set Connect via: Ethernet, Configure: Using DHCP. Note the IP. Confirm it is on 192.168.1.0/24, the same subnet as this PC (192.168.1.103).
-2. On Windows, elevated PowerShell: `Set-NetConnectionProfile -Name GompelsNet -NetworkCategory Private` — the LAN is currently classified Public, which will silently drop inbound connections.
+2. On Windows, elevated PowerShell: `Set-NetConnectionProfile -Name <home-wifi> -NetworkCategory Private` — the LAN is currently classified Public, which will silently drop inbound connections.
 3. Ping the Mac's IP from the PC. The PC is on WiFi and the Mac will be on Ethernet; if ping fails, suspect AP/client isolation on the router before suspecting anything else.
 
 Phase 1 — the server (Windows, not WSL).

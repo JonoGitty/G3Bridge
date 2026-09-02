@@ -493,6 +493,7 @@ class ControlHandler(socketserver.StreamRequestHandler):
             # has been seen, or the configured default.
             if verb == "SUSPEND":
                 SWITCH.suspend(" ".join(args))
+                webproxy.shutdown()
                 self._reply("OK", seq, *SWITCH.status())
                 continue
             if verb == "RESUME":
@@ -602,6 +603,36 @@ switched back on.</p>
 
 def html_escape(t):
     return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+CLOCK_SCRIPT = """#!/bin/sh
+# Served by the PC at %(iso)s. Sets this Mac's time zone and clock to the PC's.
+#   curl -s %(pc)s:%(port)d/time?f=sh | sudo sh
+systemsetup -settimezone %(tz)s >/dev/null 2>&1 || echo "could not set the time zone (run it with sudo)"
+if date %(stamp)s >/dev/null 2>&1; then
+  echo "clock set: `date`"
+elif date -f '%%Y-%%m-%%d %%H:%%M:%%S' '%(iso)s' >/dev/null 2>&1; then
+  echo "clock set: `date`"
+else
+  echo "could not set the clock (run it with sudo)"
+fi
+"""
+
+
+def _now_for_macs():
+    """(now, zone name, note). The zone comes from config.TIMEZONE; if the PC
+    has no zone database for it, the PC's own local time is used and said so."""
+    import datetime
+    tz = getattr(config, "TIMEZONE", "") or ""
+    if tz:
+        try:
+            from zoneinfo import ZoneInfo
+            return datetime.datetime.now(ZoneInfo(tz)), tz, ""
+        except Exception:
+            pass
+    now = datetime.datetime.now().astimezone()
+    note = ("the PC's own local time; it has no zone data for %s" % tz) if tz else ""
+    return now, tz or (now.tzname() or "local"), note
 
 
 def _q(query, key):
@@ -770,6 +801,16 @@ That is you typing it &mdash; the PC never sees it. All of it is reversible in
 System Preferences &rsaquo; Network.</p>
 </div>
 
+<div class="step">
+<h2>Clock</h2>
+<p>With no internet this Mac cannot set its own clock, but the PC can set it.
+This sets the time zone and the time, to the second:</p>
+<div class="cmd">curl -s %(pc)s:%(port)d/time?f=sh | sudo sh</div>
+<p class="note">Needs <b class="warn">sudo</b>, like Step 2. Or open
+<a href="/time">/time</a> for a big clock to copy into Date &amp; Time by hand
+&mdash; the Mac OS 9 machine has to do it that way.</p>
+</div>
+
 <hr>
 <h2>Step 2, in full</h2>
 <p class="note">Exactly what <tt>/h</tt> serves. Read it first if you like.</p>
@@ -858,6 +899,96 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             d.touch()
         return d
 
+    # -- the web translation layer -------------------------------------
+    def _redirect(self, url):
+        self.send_response(302)
+        self.send_header("Location", url)
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def _serve_web(self, dev, u, view):
+        import time as _t
+        t0 = _t.time()
+        if view == "pic":
+            try:
+                meta = webproxy.picture(u)
+                log("%s: pictured %s (%d strips, %.1fs)"
+                    % (dev.name, meta["url"][:70], len(meta["strips"]), _t.time() - t0))
+                self._send(200, "text/html", pages.web_picture(meta, True))
+            except Exception as e:
+                log("%s: picture failed for %s: %s" % (dev.name, u[:60], e))
+                self._send(200, "text/html",
+                           pages.web_error("Could not picture that page.", str(e)))
+            return
+        try:
+            page = webproxy.fetch(u, view)
+        except Exception as e:
+            log("%s: proxy failed for %s: %s" % (dev.name, u[:60], e))
+            self._send(200, "text/html", pages.web_error("Could not fetch that page.", str(e)))
+            return
+        self._serve_page(dev, page)
+
+    def _serve_page(self, dev, page):
+        from urllib.parse import quote
+        if page.kind == "video":
+            log("%s: %s is a video, handing it to /video" % (dev.name, page.url[:60]))
+            self._redirect("/video?u=" + quote(page.url, safe=""))
+            return
+        if page.kind in ("file", "image"):
+            log("%s: %s is a %s (%s)" % (dev.name, page.url[:60], page.kind, page.ctype))
+            self._send(200, "text/html", pages.web_file(page))
+            return
+        webproxy.remember(page)
+        log("%s: %s %s (%d chars, %d links, %d forms, %s view, %.1fs)"
+            % (dev.name, page.engine, page.url[:70], len(page.body), page.links,
+               page.forms, page.view, page.elapsed))
+        self._send(200, "text/html", pages.web_page(page, webproxy.RENDERER.available()))
+
+    def _serve_form(self, dev, fields):
+        u = (fields.pop("_u", None) or [""])[0]
+        m = (fields.pop("_m", None) or ["get"])[0]
+        v = (fields.pop("_v", None) or [""])[0]
+        if not u:
+            self._send(200, "text/html", pages.web_error("That form had no address.", "missing _u"))
+            return
+        try:
+            page = webproxy.submit(u, m, fields, v if v in webproxy.VIEWS else "")
+            log("%s: form %s %s (%d fields)" % (dev.name, m.upper(), u[:60], len(fields)))
+        except Exception as e:
+            log("%s: form to %s failed: %s" % (dev.name, u[:60], e))
+            self._send(200, "text/html", pages.web_error("The site did not accept that.", str(e)))
+            return
+        self._serve_page(dev, page)
+
+    def _stream_download(self, dev, d):
+        try:
+            resp, name, size, ctype = webproxy.download(d)
+        except Exception as e:
+            log("%s: download failed for %s: %s" % (dev.name, d[:60], e))
+            self._send(200, "text/html", pages.web_error("Could not download that.", str(e)))
+            return
+        ascii_name = name.encode("ascii", "replace").decode("ascii").replace('"', "")
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Disposition", 'attachment; filename="%s"' % ascii_name)
+        if size >= 0:
+            self.send_header("Content-Length", str(size))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        sent = 0
+        try:
+            for chunk in resp.iter_content(64 * 1024):
+                sent += len(chunk)
+                if sent > webproxy.MAX_DOWNLOAD:
+                    break
+                self.wfile.write(chunk)
+        except OSError:
+            pass
+        finally:
+            resp.close()
+        log("%s: downloaded %s -> %s (%d bytes)" % (dev.name, d[:60], name, sent))
+
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         query = self.path.split("?", 1)[1] if "?" in self.path else ""
@@ -943,31 +1074,39 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path == "/web":
-            import time as _t
             from urllib.parse import unquote
+            view = (_q(query, "view") or "").strip()
+            if view not in webproxy.VIEWS:
+                view = ""
             q = _pct(_q(query, "q") or "")
             u = unquote(_q(query, "u") or "")
             i = unquote(_q(query, "i") or "")
+            d = unquote(_q(query, "d") or "")
+            p = _q(query, "p") or ""
 
             if i:
                 try:
                     ctype, blob = webproxy.image(i)
                     self._send(200, ctype, blob, cacheable=True)
                 except Exception as e:
-                    self._send(404, "text/plain", "image: %s" % e)
+                    log("%s: image failed %s: %s" % (dev.name, i[:60], e))
+                    self._send(200, "image/gif", webproxy.BLANK_GIF)
+                return
+
+            if p:
+                try:
+                    blob = webproxy.strip(p, _q(query, "n") or "0")
+                    self._send(200, "image/jpeg", blob, cacheable=True)
+                except Exception:
+                    self._send(404, "text/plain", "no such picture strip")
+                return
+
+            if d:
+                self._stream_download(dev, d)
                 return
 
             if u:
-                t0 = _t.time()
-                try:
-                    title, content, final = webproxy.fetch(u)
-                    log("%s: proxied %s (%d chars)" % (dev.name, final[:70], len(content)))
-                    self._send(200, "text/html",
-                               pages.web_page(title, content, final, _t.time() - t0))
-                except Exception as e:
-                    log("%s: proxy failed for %s: %s" % (dev.name, u[:60], e))
-                    self._send(200, "text/html",
-                               pages.web_error("Could not fetch that page.", str(e)))
+                self._serve_web(dev, u, view)
                 return
 
             if q:
@@ -979,7 +1118,34 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
                     self._send(200, "text/html", pages.web_results(q, [], str(e)))
                 return
 
-            self._send(200, "text/html", pages.web_home())
+            self._send(200, "text/html",
+                       pages.web_home(webproxy.recent(), webproxy.RENDERER.available()))
+            return
+
+        if path == "/web/f":
+            # A form on a proxied page, submitted with GET. POST lands in do_POST.
+            from urllib.parse import parse_qs
+            self._serve_form(dev, parse_qs(query, keep_blank_values=True))
+            return
+
+        if path == "/time":
+            f = (_q(query, "f") or "").strip()
+            now, tz, note = _now_for_macs()
+            if f == "date":
+                self._send(200, "text/plain", now.strftime("%m%d%H%M%Y.%S"))
+            elif f == "iso":
+                self._send(200, "text/plain", now.strftime("%Y-%m-%d %H:%M:%S"))
+            elif f == "unix":
+                self._send(200, "text/plain", str(int(now.timestamp())))
+            elif f == "sh":
+                log("%s: fetched the clock script" % dev.name)
+                self._send(200, "text/plain", CLOCK_SCRIPT % {
+                    "pc": config.SUGGESTED_PC_IP, "port": HTTP_PORT, "tz": tz,
+                    "stamp": now.strftime("%m%d%H%M%Y.%S"),
+                    "iso": now.strftime("%Y-%m-%d %H:%M:%S")})
+            else:
+                self._send(200, "text/html",
+                           pages.time_page(now, tz, note, config.SUGGESTED_PC_IP, HTTP_PORT))
             return
 
         if path == "/news":
@@ -1227,6 +1393,18 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
         dev = self._device()
         if dev is None:
             self._send(403, "text/plain", "unknown machine")
+            return
+        if self.path.split("?", 1)[0] == "/web/f":
+            if SWITCH is not None and SWITCH.suspended:
+                self._send(503, "text/html", SUSPENDED_PAGE % html_escape(SWITCH.reason))
+                return
+            from urllib.parse import parse_qs
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            raw = self.rfile.read(length) if length > 0 else b""
+            self._serve_form(dev, parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True))
             return
         if self.path.split("?", 1)[0] == "/result":
             # Accept whatever the applet sends -- raw text, a PUT body, or a

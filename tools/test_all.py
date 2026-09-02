@@ -23,6 +23,8 @@ SUITES = [
      "the tool surface, the handshake, and every error path"),
     ("AppleScript channel", "test_applescript.py", True,
      "chunked results, MacRoman, compile vs runtime errors"),
+    ("web translation layer", "test_webproxy.py", False,
+     "forms, images, strips, reader, links; live pass when the daemon is up"),
 ]
 
 

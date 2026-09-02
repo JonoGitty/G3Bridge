@@ -7,3 +7,6 @@ run/
 frames/
 config.local.py
 .DS_Store
+# the PC's private key for the Macs -- never in git
+host/ssh/id_*
+!host/ssh/*.pub

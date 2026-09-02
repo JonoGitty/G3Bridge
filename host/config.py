@@ -62,6 +62,22 @@ TO_MAC_DIR = "transfer/to-mac"       # PC -> Mac. Served over HTTP.
 FROM_MAC_DIR = "transfer/from-mac"   # Mac -> PC. Written by uploads.
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 
+# --- the web translation layer --------------------------------------------
+# /web fetches pages on the PC and rewrites them for Safari 3. When a page
+# comes back nearly empty (a single-page app), the PC can run its JavaScript
+# in a headless Chromium first. That needs Playwright in Windows Python:
+#   C:\Python310\python.exe -m pip install playwright && playwright install chromium
+WEB_RENDER = True
+WEB_IMAGE_MAX_W = 900                  # every proxied image is re-encoded no wider than this
+WEB_MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
+# Converted images and picture-mode strips live under run/webcache. Delete it
+# whenever you like; it is only a cache.
+
+# --- clock -----------------------------------------------------------------
+# The Macs cannot reach a time server, so /time lets them set their clock from
+# the PC. This is the Olson zone name they are told to use.
+TIMEZONE = "Europe/London"
+
 import os as _os
 RUN_DIR_ABS = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "run")
 

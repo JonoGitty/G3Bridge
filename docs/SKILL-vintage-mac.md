@@ -67,6 +67,41 @@ For anything textual or layout-heavy, **publish a page instead**.
 Omit the `device` argument when only one machine is connected; the bridge picks
 the one it has seen.
 
+## The web, for the Macs (`/web`)
+
+The site the PC serves at `http://192.168.11.10:9980/` has a browser page,
+`/web`. The PC fetches a page and **translates** it for Safari 3, so the Macs
+can use the modern web without ever touching it. It is more than a text-only
+proxy, and worth knowing what it can do when he asks "can the eMac do X":
+
+- **Forms work.** Site search boxes and login forms submit through the PC, GET
+  or POST, with a cookie jar in `run/cookies.txt`, so sessions persist.
+- **Images are re-encoded** on the PC: WebP, AVIF, SVG become JPEG/PNG, nothing
+  wider than 900px, cached in `run/webcache/`.
+- **Downloads stream through.** A `.sit`, a PDF, an MP3 on a page becomes a
+  link that saves to the Mac's Downloads folder (64 MB cap). Macintosh Garden
+  is usable.
+- **YouTube addresses go to `/video`**, which transcodes on the PC.
+- **Four views**, switchable from the header of every proxied page:
+  `full` (everything, navigation folded into a link strip), `reader` (main
+  text only), `render` (the PC runs the page's JavaScript in a headless
+  Chromium first — auto-chosen when a page arrives nearly empty), `pic` (a
+  screenshot with every link as a clickable image map, for sites that will not
+  translate at all).
+- Address shape: `/web?u=<url>`, `/web?view=reader&u=<url>`, `/web?d=<url>`
+  for a download. To put a specific web page in front of him on the Mac,
+  publish a page whose link points at one of those.
+
+Known: old.reddit now demands a login in the UK; X/Twitter needs the picture
+view; sites behind heavy bot walls will not come through.
+
+## The clock (`/time`)
+
+The Macs cannot reach a time server. `/time` shows the PC's clock and serves
+the script that sets the Mac's zone and time: on the eMac,
+`curl -s 192.168.11.10:9980/time?f=sh | sudo sh`. Linked from `/setup`.
+`/time?f=date` gives the raw `mmddHHMMccyy.ss` that BSD `date` takes.
+
 ## Reaching the eMac directly
 
 Mac OS X means a real shell. This is usually better than any of the tools:
@@ -88,7 +123,8 @@ frame** — it is not attached to the console's window server.
 ## The kill switch
 
 `g3_suspend` stops the bridge doing anything at all: no pages, no drawing, no
-file transfer, no news fetching, no machine may connect. It **persists across a
+file transfer, no news fetching, no web proxying (and it closes the headless
+Chromium), no machine may connect. It **persists across a
 daemon restart**. `g3_resume` switches it back on. Use it whenever he asks to
 stop or pause the project.
 

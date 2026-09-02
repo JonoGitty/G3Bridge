@@ -1,6 +1,6 @@
 # G3Bridge — status
 
-Built 1 Sep 2026, in one session.
+Built 1–2 Sep 2026.
 
 ## The machines
 
@@ -22,8 +22,20 @@ fine: every 1000/2500BASE-T PHY does auto-MDI-X, so no crossover is needed.
   logged-in desktop session (returns the disk name and frontmost app).
 - **The site** — `/`, `/news` (8 feeds, 72 headlines), `/games` (4), `/web`,
   `/video`, `/claude-screen`, `/display`, `/files`, `/setup`, `/boot`.
-- **Web proxy** — Wikipedia comes through as 100 KB of clean HTML from 292 KB
-  raw, 825 links and 10 images proxied, no script/iframe/handler survives.
+- **Web translation layer** (`/web`, 2 Sep) — forms submit through the PC
+  (GET and POST verified round-trip; cookie jar on disk), images re-encoded
+  (a WebP arrives as JPEG; nothing wider than 900px; disk cache), navigation
+  folded into link strips, downloads streamed with `Content-Disposition`,
+  YouTube redirected to `/video`. Four views: full, reader, rendered
+  (headless Chromium on the PC, auto-chosen when a page arrives nearly empty),
+  picture (screenshot + image map). Measured through the daemon: BBC News
+  56 KB / 52 images / 0.1 s; Hacker News with its login form; Wikipedia 117 KB
+  with both search boxes working; Macintosh Garden with 34 download links;
+  Reddit and YouTube's home rendered on the PC in 4–12 s. 61 checks in
+  `tools/test_webproxy.py`.
+- **Clock** (`/time`) — the PC's time in `date`'s `mmddHHMMccyy.ss` form, an
+  ISO form, and a script that sets the Mac's zone and clock. Linked from
+  `/setup`.
 - **Video** — 10-minute 1080p source → 480×360 MPEG-4 Part 2 + AAC in 63 s,
   816 kbps, `+faststart`.
 - **Multi-device** — two machines render to separate 800×600 and 1024×768
@@ -32,7 +44,7 @@ fine: every 1000/2500BASE-T PHY does auto-MDI-X, so no crossover is needed.
   refuses agent connections, persists across a daemon restart, resumes cleanly.
 - **Isolation** — five Windows controls pass; the sixth (WSL2) reports a real
   finding. From the Mac: `ping 8.8.8.8` 100% loss, `apple.com` unresolvable.
-- **Tests** — `tools/test_all.py`, 4 suites, all green.
+- **Tests** — `tools/test_all.py`, 5 suites, all green.
 
 ## Not done / unknown
 
@@ -56,6 +68,15 @@ fine: every 1000/2500BASE-T PHY does auto-MDI-X, so no crossover is needed.
 - **Video playback smoothness on the actual G4** is untested. Big Buck Bunny is
   converted and waiting as the first experiment.
 - **The eMac's clock reads Jan 1**, so its PRAM battery is probably flat.
+  `/time?f=sh` fixes it from the PC but needs sudo, so it is untested there.
+- **Translated forms and picture-mode image maps have not been exercised in
+  Safari 3 itself.** Both are HTML 3.2-era features and should work; verified
+  only by fetching.
+- **old.reddit demands a login from the UK** (Online Safety Act), so the
+  Reddit rewrite lands on a login wall. The form is there; logging in through
+  it is untested. X/Twitter is JavaScript-only: picture view or nothing.
+- **Playwright's first launch takes ~16 s** on this PC; later pages 2–5 s. The
+  browser is closed after five idle minutes and relaunched on demand.
 
 ## Bugs found and fixed
 
@@ -73,6 +94,8 @@ Each of these was found by testing, not by review.
 | Chunks decoded before joining | A split landing inside a `%0D` escape ate a character; cost a line of a 59-line listing. |
 | Stale `STATUS` fields | Reported agent width/height while saying `state=waiting`. |
 | Duplicate `os=` key | Config and machine-reported values collided; whichever parsed last silently won. |
+| libxml2's 256-level nesting cap | A page of unclosed `<li>` or `<p>` tags nests one level per tag; past 256 everything was silently thrown away. `huge_tree=True`. |
+| Reader view descended into the biggest paragraph | Kept one `<p>`, lost the headline and pictures. It now only steps into containers. |
 
 ## Corrections to earlier conclusions
 
