@@ -112,6 +112,8 @@ column a 12-step DDA in floats, then a textured vertical wall slice from a 64x64
 | ray 320x240 + `BlurFilter` on the scaled bitmap every frame | 154 | 6 | **full-screen filters are out** |
 | hello plasma 320x240 | 35 | 29 | |
 
+**Void row:** "smoothing is free" was measured at `stage.quality = LOW`, where Flash ignores `Bitmap.smoothing` entirely (both rows were nearest-neighbour), so it proves nothing about bilinear cost; the game's Bench measures it at MEDIUM (`present_t1_smooth_medium`).
+
 Conclusions: design for **320x240 internal, 20 fps (50 ms) budget**, with 256x192 as
 the fallback. Per-frame floor/ceiling texture casting must fit in the ~10 ms the "ray"
 proxy leaves; if it does not, cast floors at half vertical resolution or use a flat
