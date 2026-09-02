@@ -25,6 +25,10 @@ SUITES = [
      "chunked results, MacRoman, compile vs runtime errors"),
     ("web translation layer", "test_webproxy.py", False,
      "forms, images, strips, reader, links; live pass when the daemon is up"),
+    ("iTunes through the PC", "test_itunes.py", False,
+     "disc IDs against MusicBrainz's own, the AppleScript's hygiene"),
+    ("weather channel", "test_weather.py", False,
+     "codes, compass, tiles, every icon draws; one live fetch"),
 ]
 
 

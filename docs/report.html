@@ -366,6 +366,8 @@ footer p{max-width:66ch}
         <tr><td>/display</td><td>A framebuffer for drawing primitives — the only route that works on the Mac OS 9 machine.</td></tr>
         <tr><td>/files</td><td>Transfer both ways, with line endings converted per file type and resource-fork limits surfaced rather than silently losing data.</td></tr>
         <tr><td>/time</td><td>The PC&rsquo;s clock, and a one-line command that sets the Mac&rsquo;s zone and time from it. The Macs cannot reach a time server; the eMac&rsquo;s PRAM battery is flat.</td></tr>
+        <tr><td>/itunes</td><td>iTunes, back online: the PC identifies the CD in the drive and pushes names and cover art into iTunes. See below.</td></tr>
+        <tr><td>/weather</td><td>A weather channel &mdash; five screens cycling every twelve seconds, radar included, every pixel of it drawn on the PC.</td></tr>
       </tbody>
     </table>
 
@@ -407,6 +409,31 @@ footer p{max-width:66ch}
     after libxml2&rsquo;s 256-level nesting cap turned out to be silently discarding the tail
     of pages built from unclosed tags. Nothing executable reaches the Mac, and it still opens
     no connection to anyone but the PC.</p>
+
+    <h3>iTunes, back online</h3>
+    <p>The most satisfying afternoon. A CD was ripping on the eMac as &ldquo;Track 01&rdquo; in
+    &ldquo;Unknown Album&rdquo;, because iTunes 8 asks Gracenote what a disc is and Gracenote is
+    not there. So the PC asks instead. Mac OS X mounts every audio CD with a hidden
+    <span class="mono">.TOC.plist</span>; the PC reads it over SSH, computes the MusicBrainz
+    disc ID &mdash; the same SHA-1 the real clients compute, checked here against two IDs
+    MusicBrainz itself published &mdash; looks the disc up, fetches the cover from the Cover Art
+    Archive, and an AppleScript names every track and sets the artwork. The disc was
+    <em>Songs for the Deaf</em>. Fifteen tracks were named and given their cover on the real
+    machine, which makes this the first feature beyond SSH to be verified on the hardware
+    rather than a simulator.</p>
+    <p>Three things the real iTunes taught, each costing a round trip: a CD is a
+    <em>source</em> in its object model, not a playlist; artwork must be coerced
+    <span class="mono">as JPEG picture</span>, because <span class="mono">as picture</span> reads
+    happily and then fails inside iTunes with error &minus;116; and
+    <span class="mono">named</span> is a reserved word.</p>
+
+    <h3>A weather channel</h3>
+    <p>Because a CRT on a desk wants something to show. Five screens cycling every twelve
+    seconds in the manner of the one that used to be on cable: current conditions, the next
+    twelve hours, the week, a rain radar, an almanac. Open-Meteo for the forecast, RainViewer&rsquo;s
+    latest frame in their Weather Channel palette composited over darkened OpenStreetMap tiles.
+    CSS2 has no gradients and the machine has no icon fonts, so the gradient and every weather
+    glyph are PNGs drawn with Pillow on the PC.</p>
   </div>
 </section>
 
@@ -545,8 +572,9 @@ footer p{max-width:66ch}
       the actual machine.</li>
       <li><strong>Nothing has been seen on a real CRT.</strong> Every page is written for
       Safari 3 and verified by fetching it — never by looking at it on the glass. That includes
-      the translated forms and the picture view&rsquo;s image maps: both are 1990s HTML and
-      should work, but &ldquo;should&rdquo; is the word.</li>
+      the translated forms, the picture view&rsquo;s image maps, and the weather channel, whose
+      layout was checked in a modern browser at 1024&times;740 and nowhere else. All of it is
+      1990s HTML and should work, but &ldquo;should&rdquo; is the word.</li>
       <li><strong>Video smoothness on the G4 is untested.</strong> The encode profile is
       reasoned from what that generation of QuickTime was built for, not measured.</li>
       <li><strong>The eMac&rsquo;s hardening is written but unapplied</strong> — it needs an
@@ -563,7 +591,7 @@ footer p{max-width:66ch}
 
 <footer>
   <div class="wrap">
-    <p>Built on 1 and 2 September 2026. Five test suites, two simulators so the host
+    <p>Built on 1 and 2 September 2026. Seven test suites, two simulators so the host
     could be developed with nothing plugged in, a public repository at
     <span class="mono">github.com/JonoGitty/G3Bridge</span>.
     The most useful hour was spent checking assumptions about hardware nobody has

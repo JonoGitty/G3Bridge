@@ -73,6 +73,13 @@ WEB_MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
 # Converted images and picture-mode strips live under run/webcache. Delete it
 # whenever you like; it is only a cache.
 
+# --- weather channel ---------------------------------------------------------
+# /weather is a Weather-Channel-style display for the Mac. Open-Meteo for the
+# forecast (no key), RainViewer for the radar, OpenStreetMap for the base map.
+WEATHER_LAT = 51.4543
+WEATHER_LON = -0.9781
+WEATHER_NAME = "Reading, Berkshire"
+
 # --- clock -----------------------------------------------------------------
 # The Macs cannot reach a time server, so /time lets them set their clock from
 # the PC. This is the Olson zone name they are told to use.

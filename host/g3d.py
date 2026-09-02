@@ -35,6 +35,8 @@ import news  # noqa: E402
 import pages  # noqa: E402
 import video  # noqa: E402
 import webproxy  # noqa: E402
+import itunes  # noqa: E402
+import weather  # noqa: E402
 import protocol  # noqa: E402
 import raster  # noqa: E402
 import xfer  # noqa: E402
@@ -1126,6 +1128,94 @@ class DisplayHandler(http.server.BaseHTTPRequestHandler):
             # A form on a proxied page, submitted with GET. POST lands in do_POST.
             from urllib.parse import parse_qs
             self._serve_form(dev, parse_qs(query, keep_blank_values=True))
+            return
+
+        if path == "/weather":
+            try:
+                screen = int(_q(query, "s") or 1)
+            except ValueError:
+                screen = 1
+            screen = screen if 1 <= screen <= 5 else 1
+            hold = bool(_q(query, "hold"))
+            d, err = weather.data()
+            hourly = weather.hourly_from_now(d) if d else []
+            days = weather.daily(d) if d else []
+            self._send(200, "text/html",
+                       pages.weather_page(screen, d, err, hold, hourly, days,
+                                          weather.describe, weather.compass, weather.NAME))
+            return
+
+        if path == "/weather/bg.png":
+            self._send(200, "image/png", weather.background(), cacheable=True)
+            return
+
+        if path.startswith("/weather/icon/"):
+            key = os.path.basename(path)[:-4] if path.endswith(".png") else ""
+            try:
+                size = max(32, min(320, int(_q(query, "z") or 112)))
+            except ValueError:
+                size = 112
+            if key not in ("sun", "moon", "partly", "partlynight", "cloud", "fog", "rain",
+                           "drizzle", "shower", "sleet", "snow", "storm"):
+                self._send(404, "text/plain", "no such icon")
+                return
+            self._send(200, "image/png", weather.icon(key, size), cacheable=True)
+            return
+
+        if path == "/weather/radar.jpg":
+            img, err = weather.radar()
+            if img:
+                self._send(200, "image/jpeg", img)
+            else:
+                self._send(503, "text/plain", "radar: %s" % err)
+            return
+
+        if path == "/itunes":
+            from urllib.parse import unquote_plus
+            do = (_q(query, "do") or "").strip()
+            a = unquote_plus(_q(query, "a") or "")
+            b = unquote_plus(_q(query, "b") or "")
+            msg, err, cands, info, lib = "", "", None, None, None
+            try:
+                pick = int(_q(query, "pick") or 0)
+                n = int(_q(query, "n") or 0)
+            except ValueError:
+                pick = n = 0
+            if not itunes.reachable():
+                self._send(200, "text/html", pages.itunes_page(None, None, "", None, a, b,
+                           "The eMac is not answering over SSH, so the PC cannot reach iTunes."))
+                return
+            try:
+                if do == "apply":
+                    info = itunes.identify()
+                    if not info or not info["releases"]:
+                        err = "No identified CD to apply."
+                    else:
+                        rel = info["releases"][min(pick, len(info["releases"]) - 1)]
+                        jpeg, src = itunes.cover(rel)
+                        pmap = itunes.unnamed(itunes.library())
+                        msg = "%s - %s: %s%s" % (rel["artist"], rel["title"], itunes.apply(rel, pmap, jpeg),
+                                                 "" if jpeg else " (no cover found anywhere)")
+                        log("%s: itunes apply %s" % (dev.name, msg))
+                elif do == "covers":
+                    cands = itunes.itunes_covers(a, b)
+                elif do == "cover":
+                    cands = itunes.itunes_covers(a, b)
+                    if 0 <= n < len(cands):
+                        raw = itunes._get_image(cands[n][2])
+                        lib0 = itunes.library()
+                        pids = [t["pid"] for t in lib0["tracks"]
+                                if t["album"] == b and (t["album_artist"] or t["artist"]) == a]
+                        msg = "%s - %s: %s" % (a, b, itunes.apply_cover(a, b, pids, itunes._jpeg(raw)))
+                        log("%s: itunes cover %s" % (dev.name, msg))
+                        cands = None
+                if info is None:
+                    info = itunes.identify()
+                lib = itunes.library()
+            except Exception as e:
+                err = "%s: %s" % (type(e).__name__, str(e)[:300])
+                log("%s: itunes error %s" % (dev.name, err))
+            self._send(200, "text/html", pages.itunes_page(info, lib, msg, cands, a, b, err))
             return
 
         if path == "/time":

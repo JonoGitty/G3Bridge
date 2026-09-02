@@ -6,7 +6,7 @@
 body { margin:0; padding:0; background:#e9e7df; color:#1f1d1a; font-family:"Lucida Grande", Geneva, sans-serif; font-size:13px; line-height:1.45; }
 #page { width:960px; margin:0 auto; padding:18px 0 40px 0; }
 #hdr { background:#2b2a33; color:#f3f1ea; padding:16px 20px; border-bottom:4px solid #c8a24a; }
-#hdr h1 { margin:0; font-size:22px; font-weight:bold; letter-spacing:0; }
+#hdr h1 { margin:0; font-size:22px; font-weight:bold; }
 #hdr .sub { color:#c9c5b8; font-size:12px; margin-top:4px; }
 .verdict { background:#f7f5ee; border:1px solid #b9b4a3; border-left:8px solid #2e7d4f; padding:12px 16px; margin:16px 0; }
 .verdict b { font-size:15px; color:#1f5c3a; }
@@ -18,12 +18,11 @@ table.t td { padding:5px 8px; border:1px solid #d5d1c3; vertical-align:top; font
 .ok { color:#1f5c3a; font-weight:bold; }
 .warn { color:#9a5b00; font-weight:bold; }
 .bad { color:#a3231b; font-weight:bold; }
-.gap { background:#fbfaf6; border:1px solid #c2bdad; border-left:6px solid #a3231b; padding:10px 14px; margin:10px 0; }
+.gap { background:#fbfaf6; border:1px solid #c2bdad; border-left:6px solid #2e7d4f; padding:10px 14px; margin:10px 0; }
 .gap.amber { border-left-color:#c8a24a; }
-.gap.grey { border-left-color:#8d8a80; }
+.gap.red { border-left-color:#a3231b; }
 .gap h3 { margin:0 0 4px 0; font-size:13px; }
 .gap p { margin:4px 0; }
-.small { color:#5c594f; font-size:11px; }
 #foot { margin-top:26px; padding-top:8px; border-top:1px solid #b9b4a3; color:#5c594f; font-size:11px; }
 td.num { text-align:right; font-family:Monaco, "Courier New", monospace; font-size:11px; white-space:nowrap; }
 </style>
@@ -33,98 +32,77 @@ td.num { text-align:right; font-family:Monaco, "Courier New", monospace; font-si
 
 <div id="hdr">
   <h1>Audit of forge-a: the patchwork-seo Account Audit build</h1>
-  <div class="sub">Independent re-check by the fresh forge-a session, Wednesday 2 September 2026. Read-only: nothing was changed.</div>
+  <div class="sub">Independent re-check by the fresh forge-a session, Wednesday 2 September 2026. Updated after the fixes landed the same morning. Two commits pushed: bb1ca90 (the 1 Sept work) and 10ab49a (the audit fixes).</div>
 </div>
 
 <div class="verdict">
-  <b>VERDICT: SOUND. No fabrication found. Every headline number reproduces. Three real gaps were missed by the build's own checks.</b>
-  <p style="margin:6px 0 0 0;">The battery, the exam, the dashboard check and the store all say what the session said they say. The gaps are claims written at design time that the data contradicts: a broken data-complete flag, missing window/volume footers on most open findings, and persistence constants still overriding real history. All three are staleness or intent-time claims, not invented results.</p>
+  <b>VERDICT: SOUND. No fabrication found. Every headline number reproduces. The audit's three gaps were fixed or filed the same morning.</b>
+  <p style="margin:6px 0 0 0;">Battery 14/14 (349 checks), Bernardo's exam 41/41, doc-07 assertions 41/41, dashboard check 140/0, all re-run after the fixes.</p>
 </div>
 
-<h2>1. Who did the work</h2>
+<h2>1. What the audit reproduced</h2>
 <table class="t">
-<tr><th width="180">Item</th><th>Finding</th></tr>
-<tr><td>Target</td><td>The previous forge-a session (id ea2b373f, 1 Sept 11:12 to this morning 08:09), continuing the 19 Aug to 1 Sept forge-a session that was cleared. Both are Jono's primary build session.</td></tr>
-<tr><td>Commits</td><td>The last 60 commits on branch <span class="mono">claude/session-contents-cenq94</span> all carry the same Claude-Session trailer. HEAD <span class="mono">33fb4d2</span> "Pre-clear sweep" is pushed.</td></tr>
-<tr><td>Uncommitted</td><td>12 files carry the 1 Sept afternoon work (sorting, the /ask crash fix, browse currency, verify_build expectations, docs). The living board says "UNCOMMITTED, awaiting Jono". The memory file says "all pushed", which is now stale.</td></tr>
-<tr><td>Last night</td><td>Jono asked at 21:54 "can u run an audit?" and the session never answered. It was exited at 08:09 today. This page is that audit.</td></tr>
+<tr><th>Instrument</th><th width="110">Claimed</th><th width="110">Got</th><th>Notes</th></tr>
+<tr><td>ads battery</td><td class="num">14/14</td><td class="num"><span class="ok">14/14</span></td><td>348 checks before the fixes, 349 after (one new fresh-import assertion).</td></tr>
+<tr><td>Bernardo's exam</td><td class="num">41/41</td><td class="num"><span class="ok">41/41</span></td><td>Includes the 218-click must-not-fire trap.</td></tr>
+<tr><td>Dashboard verify_build</td><td class="num">140/0</td><td class="num"><span class="ok">140/0</span></td><td>Re-run on the rebuilt live page after the footer change.</td></tr>
+<tr><td>122 findings, 58 self-closed; 59 of 60 rules</td><td class="num">-</td><td class="num"><span class="ok">TRUE</span></td><td>Read directly from the store, opened read-only.</td></tr>
+<tr><td>MySQL parity</td><td class="num">148/148</td><td class="num"><span class="warn">not re-run</span></td><td>Needs the MySQL backend.</td></tr>
 </table>
 
-<h2>2. Instruments re-run on this machine</h2>
-<table class="t">
-<tr><th>Instrument</th><th width="120">Claimed</th><th width="120">I got</th><th>Notes</th></tr>
-<tr><td>ads battery <span class="mono">run_tests.py</span></td><td class="num">14/14</td><td class="num"><span class="ok">14/14</span></td><td>348 checks: normalise 44, store oracle 14, contracts 43, lifecycle 29, judge 9, api 15, actions 24, verify 13, judge exam 16, e2e 15, batch exam 16, exam 41, doc07 41, latent 28. Hermetic per its own header.</td></tr>
-<tr><td>Bernardo's exam <span class="mono">grade_v2.py</span></td><td class="num">41/41</td><td class="num"><span class="ok">41/41</span></td><td>Includes the 218-click keyword must-not-fire trap from doc 07.</td></tr>
-<tr><td>Dashboard <span class="mono">verify_build.py</span></td><td class="num">140/0</td><td class="num"><span class="ok">140/0</span></td><td>Run on Windows Python with Playwright, its own http server, port 7789.</td></tr>
-<tr><td>MySQL parity</td><td class="num">148/148</td><td class="num"><span class="warn">not re-run</span></td><td>Needs the MySQL backend. Unverified by me.</td></tr>
-<tr><td>AiOrch grounding verifier on the session</td><td class="num">-</td><td class="num"><span class="warn">UNVERIFIABLE</span></td><td>Coverage 0 percent: the closing answer carried no checkable figures. A coverage statement, not a failure.</td></tr>
-</table>
-
-<h2>3. Claims checked against code and data (store opened read-only)</h2>
-<table class="t">
-<tr><th>Claim</th><th width="80">Result</th><th>How</th></tr>
-<tr><td>122 findings, 58 closed themselves (35 high-volume, 23 low-volume)</td><td><span class="ok">TRUE</span></td><td>findings table: condition_cleared 35 + 23. finding_events "cleared" = 58.</td></tr>
-<tr><td>59 of 60 rules evaluated, only G14 without data</td><td><span class="ok">TRUE</span></td><td>rule_config has 60 rows; the latest run report names only G14 as not evaluated; 33 distinct rules have fired on the mockups.</td></tr>
-<tr><td>Currency read from data, pound sign gone</td><td><span class="ok">TRUE</span></td><td>Both accounts USD. 0 findings contain a pound sign, 35 contain a dollar sign. browse.html now reads currency from /health.</td></tr>
-<tr><td>/ask crash fixed (SystemExit)</td><td><span class="ok">TRUE</span></td><td>chat_server.py diff: except now catches SystemExit too.</td></tr>
-<tr><td>Rule-quality endpoint with separated denominators</td><td><span class="ok">TRUE</span></td><td>api.py rule_quality plus a test on the doc's own 12-acted/8-blocked/1-rejected example.</td></tr>
-<tr><td>Verification loop closes the circle</td><td><span class="ok">SCHEDULED</span></td><td>149 verification rows, 85 with a detection date; none measured yet because every due date (13 Sept to 26 Oct) is after the last run (31 Aug). Honest, not done.</td></tr>
-<tr><td>Grading data never reaches the product</td><td><span class="ok">TRUE</span></td><td>api test proves ground_truth_metrics is blocked from /raw.</td></tr>
-<tr><td>Sol r103 review and validate-claims skill exist</td><td><span class="ok">TRUE</span></td><td>docs/reviews/2026-08-31-repair-tranche-round103.md and .claude/skills/validate-claims/ are on disk.</td></tr>
-</table>
-
-<h2>4. Gaps found by this audit (nobody had these)</h2>
+<h2>2. The gaps, and what happened to each</h2>
 
 <div class="gap">
-<h3>Gap 1. The data-complete flag is wrong on any fresh import</h3>
-<p><span class="mono">collector/store_write.py</span> takes the cut-off from the store's newest period BEFORE the batch lands. On a first import the store is empty, so every row compares against itself and is marked incomplete, whatever its age.</p>
-<p>Reproduced in a temp database: five weekly rows from Jan 2024 to Aug 2026 all came back data_complete = 0. In the dev store, 813 of 913 high-volume campaign-weekly rows are flagged incomplete back to Sept 2024, and 108 of 144 low-volume monthly rows.</p>
-<p>The test passes only because it seeds a row first. Nothing consumes data_complete or restated yet, so no finding is affected today, but the board's "tested both directions" is an intent-time claim.</p>
-</div>
-
-<div class="gap">
-<h3>Gap 2. Most open findings have no window or volume footer</h3>
-<p>Doc 01: "No number appears without its window and volume." The board claims a footer on every displayed row. Of 64 open findings, 45 have no window start and 36 have no click or conversion volume. <span class="mono">format_ads.py</span> silently omits the footer when the values are NULL. Worst rules: K7 (10), G2 (7), W2 (5), K1 (5).</p>
-</div>
-
-<div class="gap">
-<h3>Gap 3. Persistence constants still override real history</h3>
-<p>Falsification item 7 ("constants impersonate a history") is marked closed. The engine now counts a real observation streak, but takes the maximum of that and the evaluator's own constant, and <span class="mono">rules_impl.py</span> still hard-codes periods_outside_normal = 3 or 6 in about twelve places.</p>
-<p>Effect in data: 0 "watch" rows among 1,573 observations (9 advisory, 1,564 alert). The gate-5 watch tier is never reached, so "watch never publishes" is true only because nothing is ever watch.</p>
+<h3>Gap 1. Data-complete flag wrong on a fresh import: FIXED</h3>
+<p>The cut-off came from the store's newest period before the batch landed, so a first import marked every row incomplete (813 of 913 high-volume weekly rows, back to 2024). Now the batch's own newest period counts. A fresh-import assertion is in the battery. Rebuilt store: only rows from 27 July to 31 Aug 2026 are incomplete, which is the 30-day lag window.</p>
 </div>
 
 <div class="gap amber">
-<h3>Gap 4. One pound-sign sibling left in the engine</h3>
-<p><span class="mono">engine/engine.py</span> line 903 hard-codes a pound sign in the snooze-expiry note ("spent on this entity while suppressed"). Unreached on the mockups, but a USD account whose suppression expires would print pounds. chart.html and svchart.html also hard-code pounds.</p>
+<h3>Gap 2. Window and volume footer vanished silently: HONEST NOW, not complete</h3>
+<p>Of 64 open findings, 45 had no window and 36 no volume, and the footer said nothing. It now prints "window not recorded" or "volume not recorded". Still open: the evaluators themselves (K7, G2, W2, K1 and others) need to declare a window, and K1, K7 and W2 declare volume as spend, which the store has no column for.</p>
 </div>
 
-<div class="gap grey">
-<h3>Gap 5. Stale prose in the human-facing docs</h3>
-<p>COMPLIANCE.md says "13 suites" (it is 14) and still lists constraints auto-suppression, rule-quality rates and restatement as "need real usage" although they were built on 1 Sept. FALSIFICATION-31AUG.md's "still open" tail says 23 evaluator-less rules (now 1). REPAIR-STATUS.md's "honestly open" section repeats the pre-sweep list. TESTING.md is the 18 Aug pre-build note pointing at v1's battery, and README still cites it. format_ads.py still comments "plain pounds".</p>
+<div class="gap red">
+<h3>Gap 3. Persistence constants: TRIED, REVERTED, FILED</h3>
+<p>The engine takes the larger of the evaluator's hard-coded 3 or 6 and the observed streak, so the watch tier was never reached. Deleting the constants made the watch tier real (46 watch observations) but turned three suites red: the batch exam, doc-07 and one contract. Single-run exams, and doc 02 section 5, read a rule's window depth as "periods outside normal".</p>
+<p>Constants restored. The right fix is a measured count inside each evaluator's window, the way X2 already counts consecutive falls, not a literal. Whether first-sight window depth counts as persistence is a question for Bernardo and is on the board.</p>
 </div>
 
-<h2>5. The briefs' hard points</h2>
+<div class="gap">
+<h3>Gap 4. Last hard-coded pound sign in the engine: FIXED</h3>
+<p>The snooze-expiry note now reads the account's currency. Two secondary chart pages still hard-code pounds and were left alone.</p>
+</div>
+
+<div class="gap">
+<h3>Gap 5. Stale prose: REFRESHED</h3>
+<p>COMPLIANCE.md (14 suites, the 1 Sept builds no longer "need real usage"), the falsification ledger's tail, README's TESTING.md line, the living board's honestly-open list, and two "plain pounds" comments.</p>
+</div>
+
+<h2>3. The open decisions: whose are they really?</h2>
 <table class="t">
-<tr><th>Asked for</th><th width="110">Status</th><th>Evidence</th></tr>
-<tr><td>Doc 07 "cannot be deferred": baseline capture at creation</td><td><span class="ok">BUILT</span></td><td>Baseline-at-creation with a differential test; 149 verification rows carry baseline windows.</td></tr>
-<tr><td>Doc 07 "the one hard deadline": nightly settings snapshot</td><td><span class="warn">BLOCKED</span></td><td>Needs a live connection; disclosed everywhere as must-start-day-one. 90-day Google retention makes this unrecoverable.</td></tr>
-<tr><td>Doc 07 traps: 218-click keyword must not fire; planted non-problems must not be reported</td><td><span class="ok">ASSERTED</span></td><td>grade_v2 pins the 218-click case; doc07_assertions grades severities against Bernardo's own sheets (41/41). I did not re-derive each of the nine non-problems.</td></tr>
-<tr><td>Chris: targets source, primary-vs-all conversions</td><td><span class="warn">OPEN</span></td><td>Running on labelled defaults, as disclosed. Still needs Chris.</td></tr>
-<tr><td>Bernardo: 261-click bar, consent-mode severity, 7-vs-9 categories, range-name swap, real CSV exports</td><td><span class="warn">OPEN</span></td><td>Filed in COMPLIANCE.md, Slack message drafted. Still needs Bernardo. His session date is 17 Sept.</td></tr>
+<tr><th width="200">Decision</th><th>What it actually is</th><th width="150">Can we make it?</th><th>Running today</th></tr>
+<tr><td>Chris: where targets come from</td><td>E1, E3, E4 and O1 compare CPA and ROAS against a target. Client-provided at onboarding, the account's own bidding settings, or a historical median.</td><td><span class="ok">Default is ours</span>. Only VF can promise clients will supply one at onboarding.</td><td>target_source = derived: the account's own trailing year. Overridable per account.</td></tr>
+<tr><td>Chris: primary vs all conversions</td><td>Google reports "Conversions" (primary actions) and "All conversions". The gap is often 20 percent and it moves every efficiency figure.</td><td><span class="ok">Default is ours</span>. Chris's account managers know how each client counts, so he should confirm.</td><td>Primary only, Google's own default. All-conversions is stored and unused.</td></tr>
+<tr><td>Bernardo: the 261-click bar</td><td>His key prices S2's bar at 261 clicks; every rate in his workbook gives 198 to 218.</td><td><span class="warn">His</span>. It is his answer key. Does not block.</td><td>A disclosed config margin of 1.2. Exam passes.</td></tr>
+<tr><td>Bernardo: consent-mode severity</td><td>His key says High; his own gate 4 says a measurement change is context, not a finding.</td><td><span class="warn">His</span>. A contradiction inside his docs.</td><td>The doc's logic: context.</td></tr>
+<tr><td>Bernardo: 7 vs 9 categories</td><td>The data model has 7 category values, the display taxonomy 9, no mapping.</td><td><span class="ok">Ours</span>. Cosmetic; he just needs to nod.</td><td>The 7.</td></tr>
+<tr><td>Bernardo: n_low/n_high naming</td><td>A typo in his range formula. The maths is right.</td><td><span class="ok">Nothing to decide</span>. FYI for him.</td><td>The maths.</td></tr>
+<tr><td>Bernardo: first-sight persistence (new, from gap 3)</td><td>Does a rule whose window already spans 3 periods count as 3 periods persisted on first sight?</td><td><span class="ok">Ours with disclosure</span>. His doc reads that way; the exams assume it.</td><td>Yes, via the evaluator's window.</td></tr>
+<tr><td>Bernardo's asks: real CSV exports, a blind account, QS-component columns</td><td>Data only he can supply.</td><td><span class="bad">His alone</span>.</td><td>Emulated exports; K2 waits.</td></tr>
 </table>
+<p class="small" style="font-size:11px;color:#5c594f;">Net: nothing on either list blocks the build. Every decision runs on a labelled default. The Slack message to Bernardo, drafted 1 Sept, is paste-ready.</p>
 
-<h2>6. What to do with this</h2>
+<h2>4. What is next</h2>
 <table class="t">
-<tr><th width="40">#</th><th>Action</th><th width="120">Kind</th></tr>
-<tr><td>1</td><td>Commit the 1 Sept afternoon work (12 files) or tell the session to drop it. It is disclosed but not safe until committed.</td><td>Jono's call</td></tr>
-<tr><td>2</td><td>Fix store_write so the cut-off uses the batch's own newest period, and add a fresh-import assertion (old period complete, newest not).</td><td>Code, small</td></tr>
-<tr><td>3</td><td>Give every evaluator a window and volume, or make the footer say "window unknown" rather than vanish.</td><td>Code, medium</td></tr>
-<tr><td>4</td><td>Decide whether an evaluator constant may ever beat the observed streak. If not, drop the max() and let watch happen.</td><td>Design decision</td></tr>
-<tr><td>5</td><td>Refresh the five stale doc passages listed in gap 5.</td><td>Docs, 20 min</td></tr>
+<tr><th width="40">#</th><th>Action</th><th width="130">Whose</th></tr>
+<tr><td>1</td><td>Send the Bernardo Slack message. Four questions, three asks, plus the persistence question if you want it in.</td><td>Jono</td></tr>
+<tr><td>2</td><td>Ask Chris to confirm the two defaults: derived targets, primary-only conversions. One line each.</td><td>Jono</td></tr>
+<tr><td>3</td><td>Evaluator windows and volumes for the rules listed under gap 2, and measured persistence counts per evaluator.</td><td>Next session</td></tr>
+<tr><td>4</td><td>The API connector and the nightly settings snapshot. Not in our hands.</td><td>VF</td></tr>
 </table>
 
 <div id="foot">
-Audit method: attribute, read the briefs first, inventory the claims, re-run the instruments, spot-check code and data, hunt gaps by shape. Store opened with mode=ro. No files in the repo were modified. Verdict distinguishes fabrication (none found) from staleness (gap 5) from intent-time claims (gaps 1 to 3) from disclosed-but-blocked (the snapshot, the connector rules).
+Audit changed nothing; the fixes were made afterwards on Jono's say-so and are in commit 10ab49a. Persistence deletion was tried and reverted in the same session, with the red exam results recorded on the board.
 </div>
 
 </div>

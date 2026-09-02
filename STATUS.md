@@ -10,7 +10,7 @@ Built 1–2 Sep 2026.
 | OS | Mac OS X 10.5.6 (build 9G66), Darwin 9.6.0 PPC | Mac OS 9.2 |
 | address | `192.168.11.3` | `192.168.11.2` |
 | screen | 1024×768 (CRT max 1280×960) | 800×600 |
-| access | **SSH, key-based, working** | browser; agent written but unrun |
+| access | **SSH, key-based, working**; user `mac`; iTunes 8.0.2 | browser; agent written but unrun |
 | state | working | **thermal fault — will not start when warm** |
 
 PC is `192.168.11.10` on a Realtek 2.5GbE adapter. Straight-through cable is
@@ -36,6 +36,19 @@ fine: every 1000/2500BASE-T PHY does auto-MDI-X, so no crossover is needed.
 - **Clock** (`/time`) — the PC's time in `date`'s `mmddHHMMccyy.ss` form, an
   ISO form, and a script that sets the Mac's zone and clock. Linked from
   `/setup`.
+- **iTunes through the PC** (`/itunes`, 2 Sep) — **verified on the real eMac,
+  the first feature beyond SSH to be.** A CD ripping as "Track 01" in "Unknown
+  Album" was identified from `/Volumes/Audio CD/.TOC.plist` (MusicBrainz disc
+  ID computed on the PC and checked against two IDs MusicBrainz published),
+  fuzzy-matched to *Queens of the Stone Age — Songs for the Deaf* (2002), and
+  15 imported tracks were named, dated and given the Cover Art Archive cover
+  by AppleScript over SSH. Album-cover lookup for the rest of the library uses
+  the iTunes Search API. 15 checks in `tools/test_itunes.py`.
+- **Weather channel** (`/weather`, 2 Sep) — five screens cycling every 12 s:
+  current, next 12 hours, 7 days, rain radar (RainViewer frame over darkened
+  OpenStreetMap tiles, composited with Pillow in 0.7 s), almanac. Icons and
+  the gradient are PNGs drawn on the PC. Layout checked in Chromium at
+  1024x740, not on the CRT.
 - **Video** — 10-minute 1080p source → 480×360 MPEG-4 Part 2 + AAC in 63 s,
   816 kbps, `+faststart`.
 - **Multi-device** — two machines render to separate 800×600 and 1024×768
@@ -44,7 +57,7 @@ fine: every 1000/2500BASE-T PHY does auto-MDI-X, so no crossover is needed.
   refuses agent connections, persists across a daemon restart, resumes cleanly.
 - **Isolation** — five Windows controls pass; the sixth (WSL2) reports a real
   finding. From the Mac: `ping 8.8.8.8` 100% loss, `apple.com` unresolvable.
-- **Tests** — `tools/test_all.py`, 5 suites, all green.
+- **Tests** — `tools/test_all.py`, 7 suites, all green.
 
 ## Not done / unknown
 
@@ -77,6 +90,12 @@ fine: every 1000/2500BASE-T PHY does auto-MDI-X, so no crossover is needed.
   it is untested. X/Twitter is JavaScript-only: picture view or nothing.
 - **Playwright's first launch takes ~16 s** on this PC; later pages 2–5 s. The
   browser is closed after five idle minutes and relaunched on demand.
+- **iTunes' CD-track count reads 0** even though the CD's tracks end up named:
+  iTunes links CD tracks to their imports, so renaming the imports renames the
+  CD. The effect is real; the counter is not to be trusted.
+- **The iTunes XML lags** behind edits by a while, so anything that matches
+  tracks by name must do it live inside iTunes (the AppleScript does) rather
+  than from the XML.
 
 ## Bugs found and fixed
 
@@ -96,6 +115,10 @@ Each of these was found by testing, not by review.
 | Duplicate `os=` key | Config and machine-reported values collided; whichever parsed last silently won. |
 | libxml2's 256-level nesting cap | A page of unclosed `<li>` or `<p>` tags nests one level per tag; past 256 everything was silently thrown away. `huge_tree=True`. |
 | Reader view descended into the biggest paragraph | Kept one `<p>`, lost the headline and pictures. It now only steps into containers. |
+| `named` as an AppleScript variable | Reserved word; the script would not compile (`-2741`). |
+| Artwork `as picture` | Reads fine, then iTunes fails with `-116`. It wants `as JPEG picture`. |
+| A CD is a *source*, not a playlist | `every audio CD playlist` at the top level finds nothing; walk `every source` and take the one whose kind is `audio CD`. |
+| Invented test vectors | The first offline disc-ID test used offsets typed from memory and failed; the real ones from MusicBrainz pass. |
 
 ## Corrections to earlier conclusions
 

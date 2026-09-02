@@ -95,6 +95,32 @@ proxy, and worth knowing what it can do when he asks "can the eMac do X":
 Known: old.reddit now demands a login in the UK; X/Twitter needs the picture
 view; sites behind heavy bot walls will not come through.
 
+## iTunes, through the PC (`/itunes`)
+
+iTunes 8 on the eMac cannot look anything up (Gracenote and Apple's artwork
+service are unreachable and dead anyway), so a ripped CD is "Track 01" in
+"Unknown Album". The PC does it instead, **verified on the real machine**:
+
+- `/itunes` on the Mac's browser, or from the PC:
+  `C:\Python310\python.exe C:\AI\G3Bridge\host\itunes.py cd --apply`
+- It reads the CD's TOC over SSH, computes the MusicBrainz disc ID, looks it
+  up (exact, then fuzzy), fetches the cover (Cover Art Archive, then the iTunes
+  Search API), and an AppleScript names the CD's tracks and any already
+  imported "Track NN" tracks, and sets the artwork. Re-run after an import
+  finishes to catch the rest.
+- `itunes.py library` lists albums and which lack art; `covers ARTIST ALBUM`
+  and `cover-apply ARTIST ALBUM [N]` handle albums already in the library.
+- AppleScript facts that cost time: a CD is a **source** (`every source` whose
+  kind is `audio CD`), artwork must be `as JPEG picture`, `named` is a
+  reserved word, and the library XML lags edits — match live inside iTunes.
+
+## Weather channel (`/weather`)
+
+Five screens cycling every 12 s, Weather-Channel style: current, next 12
+hours, 7 days, rain radar (composited on the PC), almanac. `?s=N&hold=1` holds
+one screen. Location in `config.WEATHER_*` (Reading). Open it on the eMac's
+screen with `ssh -F ... emac 'open http://192.168.11.10:9980/weather'`.
+
 ## The clock (`/time`)
 
 The Macs cannot reach a time server. `/time` shows the PC's clock and serves

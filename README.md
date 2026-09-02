@@ -29,7 +29,8 @@ Claude Code ──MCP stdio──► mcp_server.py ──loopback :9991──►
 
 A small site the PC serves at `http://192.168.11.10:9980/`, written for
 **Safari 3 (2008)** — CSS2 only, no flexbox, ES3-era JavaScript, nothing loaded
-from anywhere but the PC.
+from anywhere but the PC. Where the old machine's own software used to phone
+home — iTunes asking Gracenote what CD this is — the PC now answers instead.
 
 | page | what it does |
 |---|---|
@@ -42,6 +43,8 @@ from anywhere but the PC.
 | `/files`, `/upload` | file transfer both ways |
 | `/setup` | connect and harden a newly plugged-in machine |
 | `/time` | the PC's clock, and a one-line command that sets the Mac's clock and time zone from it (the Macs have no time server) |
+| `/itunes` | **iTunes, back online.** The PC reads the audio CD's table of contents over SSH, computes the MusicBrainz disc ID, looks the disc up, fetches the cover from the Cover Art Archive, and pushes names, album, year and artwork into iTunes with AppleScript. Also finds covers for albums already in the library. Verified on the real eMac |
+| `/weather` | a **weather channel**: current conditions, the next twelve hours, the week, the rain radar (RainViewer over darkened OpenStreetMap tiles, composited on the PC) and an almanac, cycling every twelve seconds. Icons and the gradient are drawn with Pillow because CSS2 has neither |
 
 ## What Claude gets
 
@@ -110,6 +113,8 @@ that resulted.
 | `host/pages.py` | all HTML, written for a 2008 browser |
 | `host/webproxy.py` | the web translation layer: fetch, translate, forms, images, downloads, picture mode |
 | `host/render.py` | one thread owning a headless Chromium, for rendered and picture views and for SVG |
+| `host/itunes.py` | disc ID, MusicBrainz, Cover Art Archive, the iTunes Search API, and the AppleScript that pushes it all into iTunes over SSH. Also a CLI |
+| `host/weather.py` | Open-Meteo, RainViewer, the radar composite, the icons |
 | `host/video.py` | fetch and transcode |
 | `host/news.py` | RSS on a background thread |
 | `host/isolation.py` | the six network controls |
