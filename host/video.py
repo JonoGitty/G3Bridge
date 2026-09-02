@@ -157,7 +157,9 @@ def _process(job, outdir):
 
     r = subprocess.run(
         [YTDLP, "--no-warnings", "--no-playlist",
-         "-f", "bv*[height<=720]+ba/b[height<=720]/b",
+         # H.264 sources first: YouTube answers 403 for the AV1 streams yt-dlp
+         # would otherwise pick, and ffmpeg decodes H.264 faster anyway.
+         "-f", "bv*[vcodec^=avc1][height<=720]+ba[acodec^=mp4a]/bv*[height<=720]+ba/b[height<=720]/b",
          "--merge-output-format", "mp4", "-o", tmp, job.url],
         capture_output=True, text=True, timeout=1800)
     src = tmp
@@ -168,7 +170,8 @@ def _process(job, outdir):
                 break
     if not os.path.exists(src):
         job.state = "failed"
-        job.message = "could not download: " + (r.stderr or "")[-220:]
+        err = "\n".join(l for l in (r.stderr or "").splitlines() if "Deprecated Feature" not in l)
+        job.message = "could not download: " + err[-300:]
         job.finished = time.time()
         return
 

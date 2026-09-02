@@ -119,6 +119,8 @@ Each of these was found by testing, not by review.
 | Artwork `as picture` | Reads fine, then iTunes fails with `-116`. It wants `as JPEG picture`. |
 | A CD is a *source*, not a playlist | `every audio CD playlist` at the top level finds nothing; walk `every source` and take the one whose kind is `audio CD`. |
 | Invented test vectors | The first offline disc-ID test used offsets typed from memory and failed; the real ones from MusicBrainz pass. |
+| YouTube 403 on AV1 streams | yt-dlp's default pick for a 720p source was AV1, which YouTube refused to serve. The selector now prefers H.264. |
+| Truncated failure text | The video job kept the last 220 chars of stderr, which was the Python-3.10 deprecation nag, not the error. |
 
 ## Corrections to earlier conclusions
 
